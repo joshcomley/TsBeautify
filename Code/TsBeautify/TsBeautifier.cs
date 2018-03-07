@@ -10,8 +10,15 @@ namespace TsBeautify
 
         public string Beautify(string typescript)
         {
-            var parser = new TsBeautifierInstance(typescript, Options);
-            return parser.Beautify();
+            try
+            {
+                var parser = new TsBeautifierInstance(typescript, Options);
+                return parser.Beautify();
+            }
+            catch
+            {
+                return typescript;
+            }
         }
     }
 }

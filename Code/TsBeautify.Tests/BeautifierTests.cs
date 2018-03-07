@@ -1,4 +1,6 @@
+using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using TsBeautify.Data;
 
 namespace TsBeautify.Tests
 {
@@ -51,6 +53,15 @@ let y = 7;";
             var beautifier = new TsBeautifier();
             var result = beautifier.Beautify(typescript);
             Assert.AreEqual(@"import { PropertyInfo, Type, Interface, TypeInfo } from ""@brandless/tsutility"";", result);
+        }
+
+        [TestMethod]
+        public void TestLargeFile()
+        {
+            var typescript = LargeFile.Inputxx;
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+            Assert.AreEqual(LargeFile.Beautified, result);
         }
     }
 }

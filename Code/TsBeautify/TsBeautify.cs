@@ -9,7 +9,6 @@ namespace TsBeautify
 {
     internal class TsBeautifierInstance
     {
-        private readonly bool _addScriptTags;
         private readonly string _digits;
         private readonly string _genericsBrackets;
         private readonly string _indentString;
@@ -57,12 +56,7 @@ namespace TsBeautify
             _indentLevel = optIndentLevel;
 
 
-            _input = jsSourceText.Replace("<script type=\"text/javascript\">", "").Replace("</script>", "");
-            if (_input.Length != jsSourceText.Length)
-            {
-                _output.AppendLine("<script type=\"text/javascript\">");
-                _addScriptTags = true;
-            }
+            _input = jsSourceText;
 
             var lastWord = "";
             _lastType = "TK_START_EXPR"; // last token type
@@ -922,7 +916,30 @@ namespace TsBeautify
                         var interpolationAllowed = c == "`";
                         while (esc || _input[parserPos].ToString() != sep)
                         {
+                            var interpolationActioned = false;
                             if (interpolationAllowed && _input.StartsWithAt("${", parserPos))
+                            {
+                                var escapeCount = 0;
+                                for (var i = parserPos - 1; i > 0; i--)
+                                {
+                                    if (_input[i] == '\\')
+                                    {
+                                        escapeCount++;
+                                    }
+                                    else
+                                    {
+                                        break;
+                                    }
+                                }
+
+                                if (escapeCount % 2 == 0)
+                                {
+                                    // Escaped
+                                    interpolationActioned = true;
+                                }
+                            }
+
+                            if (interpolationActioned)
                             {
                                 var jsSourceText = _input.Substring(parserPos + 1);
                                 var sub = new TsBeautifierInstance(jsSourceText, _options, true);
@@ -1028,11 +1045,6 @@ namespace TsBeautify
 
         public string Beautify()
         {
-            if (_addScriptTags)
-            {
-                _output.AppendLine().AppendLine("</script>");
-            }
-
             return _output.ToString();
         }
     }

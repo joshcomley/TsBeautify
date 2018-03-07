@@ -7,13 +7,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Files\TsBeautify.ts" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Files\TsBeautify.ts">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.5.0" />
     <PackageReference Include="MSTest.TestAdapter" Version="1.2.0" />
     <PackageReference Include="MSTest.TestFramework" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TsBeautify.Core\TsBeautify.csproj" />
+    <ProjectReference Include="..\TsBeautify\TsBeautify.csproj" />
   </ItemGroup>
 
 </Project>
