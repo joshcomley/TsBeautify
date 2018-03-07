@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27130.2026
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Build", "Build", "{57DAE9B0-48CE-42D0-9911-A7E276C66700}"
+	ProjectSection(SolutionItems) = preProject
+		Directory.Build.props = Directory.Build.props
+	EndProjectSection
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "TsBeautify", "TsBeautify\TsBeautify.csproj", "{25682708-1B65-42C3-829A-1527E16B1FC6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TsBeautify.Tests", "TsBeautify.Tests\TsBeautify.Tests.csproj", "{E3FE9FC3-6ED5-42DF-B424-0A4EF7FA1371}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{25682708-1B65-42C3-829A-1527E16B1FC6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{25682708-1B65-42C3-829A-1527E16B1FC6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{25682708-1B65-42C3-829A-1527E16B1FC6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{25682708-1B65-42C3-829A-1527E16B1FC6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E3FE9FC3-6ED5-42DF-B424-0A4EF7FA1371}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3FE9FC3-6ED5-42DF-B424-0A4EF7FA1371}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3FE9FC3-6ED5-42DF-B424-0A4EF7FA1371}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3FE9FC3-6ED5-42DF-B424-0A4EF7FA1371}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {82F1ABDD-100B-486E-9750-A00B988A22C4}
+	EndGlobalSection
+EndGlobal
