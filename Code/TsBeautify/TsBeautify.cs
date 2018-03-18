@@ -869,8 +869,8 @@ namespace TsBeautify
                 }
             }
 
-            if (c == "'" || c == "\"" || c == "/" || c == "`"
-                && (_lastType == "TK_WORD" && _lastText == "return" || _lastType == "TK_START_EXPR" ||
+            if ((c == "'" || c == "\"" || c == "/" || c == "`")
+                && ((_lastType == "TK_WORD" && (_lastText == "return" || _lastText == "from" || _lastText == "case")) || _lastType == "TK_START_EXPR" ||
                     _lastType == "TK_START_BLOCK" || _lastType == "TK_END_BLOCK" || _lastType == "TK_OPERATOR" ||
                     _lastType == "TK_EOF" || _lastType == "TK_SEMICOLON")
             )

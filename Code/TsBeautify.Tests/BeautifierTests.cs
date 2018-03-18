@@ -8,6 +8,38 @@ namespace TsBeautify.Tests
     public class BeautifierTests
     {
         [TestMethod]
+        public void TestDivide()
+        {
+            var typescript = @"
+                if (pageSize > 0)
+                {
+                    page = skippedSoFar / pageSize;
+                }
+
+                var pageCount = 0;
+                var i = totalCount;
+                while (i > 0)
+                {
+                    pageCount++;
+                    i -= pageSize;
+                }
+
+                dbList.PagingInfo = new PagingInfo(skippedSoFar, totalCount, pageSize, page, pageCount);";
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+            Assert.AreEqual(@"if (pageSize > 0) {
+    page = skippedSoFar / pageSize;
+}
+var pageCount = 0;
+var i = totalCount;
+while (i > 0) {
+    pageCount++;
+    i -= pageSize;
+}
+dbList.PagingInfo = new PagingInfo(skippedSoFar, totalCount, pageSize, page, pageCount);", result);
+        }
+
+        [TestMethod]
         public void TestSingleLineWhitespaceCleaning()
         {
             var typescript = "let   x: string    = `something` ;";
@@ -62,6 +94,46 @@ let y = 7;";
             var beautifier = new TsBeautifier();
             var result = beautifier.Beautify(typescript);
             Assert.AreEqual(LargeFile.Beautified, result);
+        }
+
+        [TestMethod]
+        public void TestKeyWordInLiteral()
+        {
+            var typescript = @"        switch (type) {
+            case ""number"":
+                return """" + key;
+            case ""string"":
+                return <string><any>key;
+            case ""function"": {
+                let name = key[""ClassName""] || key[""Name""] || key[""name""];//TypeInfo.NameOf(key);
+                if (!name) {
+                    name = TypeInfo.NameOf(key);
+                }
+                if (name) {
+                    return name;
+                }
+            }
+                break;
+}";
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+            Assert.AreEqual(@"switch (type) {
+case ""number"":
+    return """" + key;
+case ""string"":
+    return<string><any>key;
+case ""function"":
+    {
+        let name = key[""ClassName""] || key[""Name""] || key[""name""]; //TypeInfo.NameOf(key);
+        if (!name) {
+            name = TypeInfo.NameOf(key);
+        }
+        if (name) {
+            return name;
+        }
+    }
+    break;
+}", result);
         }
     }
 }
