@@ -2,6 +2,7 @@
 {
     public class TsBeautifyOptions
     {
+        public bool OpenBlockOnNewLine { get; set; }
         public int? IndentSize { get; set; }
         public char? IndentChar { get; set; }
         public int? IndentLevel { get; set; }

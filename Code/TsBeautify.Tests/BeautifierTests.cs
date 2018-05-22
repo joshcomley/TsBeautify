@@ -8,6 +8,49 @@ namespace TsBeautify.Tests
     public class BeautifierTests
     {
         [TestMethod]
+        public void TestAtEscapedString()
+        {
+            var result = Beautify(@"var callbackMatch = Regex.Match(line, @""typedef [A-Za-z0-9_]+ [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");");
+            Assert.AreEqual(@"var callbackMatch = Regex.Match(line, @""typedef [A-Za-z0-9_]+ [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");", result);
+        }
+
+        [TestMethod]
+        public void TestCSharpInterpolatedString()
+        {
+            var result = Beautify(@"var callbackMatch = Regex.Match(line, $@""typedef {something} [A-Za-z0-9_]+ {somethingElse} [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");");
+            Assert.AreEqual(@"var callbackMatch = Regex.Match(line, $@""typedef {something} [A-Za-z0-9_]+ {somethingElse} [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");", result);
+        }
+
+        [TestMethod]
+        public void TestCSharpEscapedInterpolatedString()
+        {
+            var result = Beautify(@"var callbackMatch = Regex.Match(line, $@""typedef {{something}} [A-Za-z0-9_]+ {somethingElse} [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");");
+            Assert.AreEqual(@"var callbackMatch = Regex.Match(line, $@""typedef {{something}} [A-Za-z0-9_]+ {somethingElse} [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");", result);
+        }
+
+        private static string Beautify(string code)
+        {
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(code);
+            return result;
+        }
+
+        [TestMethod]
+        public void TestKeepBracesOnNewLines()
+        {
+            var code = @"if (true)
+                {
+                    var x = 1;
+                }";
+            var beautifier = new TsBeautifier().Configure(x => x.OpenBlockOnNewLine = true);
+            var result = beautifier.Beautify(code);
+            Assert.AreEqual(@"if (true)
+{
+    var x = 1;
+}", result);
+        }
+
+        [TestMethod]
         public void TestDivide()
         {
             var typescript = @"

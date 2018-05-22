@@ -157,7 +157,14 @@ namespace TsBeautify
                             }
                             else
                             {
-                                PrintSpace();
+                                if (options.OpenBlockOnNewLine)
+                                {
+                                    PrintNewLine(null);
+                                }
+                                else
+                                {
+                                    PrintSpace();
+                                }
                             }
                         }
 
@@ -332,7 +339,7 @@ namespace TsBeautify
                         {
                             PrintNewLine(null);
                         }
-                        else if (_lastType == "TK_WORD")
+                        else if (_lastType == "TK_WORD" && _lastText != "$")
                         {
                             PrintSpace();
                         }
@@ -869,8 +876,31 @@ namespace TsBeautify
                 }
             }
 
+            StringInterpolationKind interpolationAllowed = StringInterpolationKind.None;
+            // Allow C# interpolated strings
+            if (c == "$" || _lastText == "$")
+            {
+                var lookahead = c == "$" ? 1 : 0;
+                var next = At(parserPos + lookahead);
+                if (next == "@" || next == "\"")
+                {
+                    interpolationAllowed = StringInterpolationKind.CSharp;
+                    if (lookahead == 1)
+                    {
+                        _output.Append(c);
+                        c = _input[parserPos].ToString();
+                        parserPos++;
+                    }
+                }
+            }
+            if (c == "@" && _input[parserPos].ToString() == "\"")
+            {
+                _output.Append(c);
+                c = _input[parserPos].ToString();
+                parserPos++;
+            }
             if ((c == "'" || c == "\"" || c == "/" || c == "`")
-                && ((_lastType == "TK_WORD" && (_lastText == "return" || _lastText == "from" || _lastText == "case")) || _lastType == "TK_START_EXPR" ||
+                && ((_lastType == "TK_WORD" && (_lastText == "$" || _lastText == "return" || _lastText == "from" || _lastText == "case")) || _lastType == "TK_START_EXPR" ||
                     _lastType == "TK_START_BLOCK" || _lastType == "TK_END_BLOCK" || _lastType == "TK_OPERATOR" ||
                     _lastType == "TK_EOF" || _lastType == "TK_SEMICOLON")
             )
@@ -913,39 +943,69 @@ namespace TsBeautify
                     }
                     else
                     {
-                        var interpolationAllowed = c == "`";
+                        if (c == "`")
+                        {
+                            interpolationAllowed = StringInterpolationKind.TypeScript;
+                        }
                         while (esc || _input[parserPos].ToString() != sep)
                         {
                             var interpolationActioned = false;
-                            if (interpolationAllowed && _input.StartsWithAt("${", parserPos))
+                            switch (interpolationAllowed)
                             {
-                                var escapeCount = 0;
-                                for (var i = parserPos - 1; i > 0; i--)
-                                {
-                                    if (_input[i] == '\\')
+                                case StringInterpolationKind.CSharp:
+                                    if (_input.StartsWithAt("{", parserPos) && !_input.StartsWithAt("{{", parserPos))
                                     {
-                                        escapeCount++;
+                                        interpolationActioned = true;
                                     }
-                                    else
+                                    break;
+                                case StringInterpolationKind.TypeScript:
+                                    if (_input.StartsWithAt("${", parserPos))
                                     {
-                                        break;
-                                    }
-                                }
+                                        var escapeCount = 0;
+                                        for (var i = parserPos - 1; i > 0; i--)
+                                        {
+                                            if (_input[i] == '\\')
+                                            {
+                                                escapeCount++;
+                                            }
+                                            else
+                                            {
+                                                break;
+                                            }
+                                        }
 
-                                if (escapeCount % 2 == 0)
-                                {
-                                    // Escaped
-                                    interpolationActioned = true;
-                                }
+                                        if (escapeCount % 2 == 0)
+                                        {
+                                            // Escaped
+                                            interpolationActioned = true;
+                                        }
+                                    }
+                                    break;
                             }
 
                             if (interpolationActioned)
                             {
-                                var jsSourceText = _input.Substring(parserPos + 1);
-                                var sub = new TsBeautifierInstance(jsSourceText, _options, true);
-                                var interpolated = sub.Beautify().TrimStart('{').Trim();
-                                resultingString += $"${{{interpolated}}}";
-                                parserPos += sub._parserPos + 1;
+                                switch (interpolationAllowed)
+                                {
+                                    case StringInterpolationKind.CSharp:
+                                        {
+                                            var jsSourceText = _input.Substring(parserPos);
+                                            var sub = new TsBeautifierInstance(jsSourceText, _options, true);
+                                            var interpolated = sub.Beautify().TrimStart('{').Trim();
+                                            resultingString += $"{{{interpolated}}}";
+                                            parserPos += sub._parserPos;
+                                        }
+                                        break;
+                                    case StringInterpolationKind.TypeScript:
+                                        {
+                                            var jsSourceText = _input.Substring(parserPos + 1);
+                                            var sub = new TsBeautifierInstance(jsSourceText, _options, true);
+                                            var interpolated = sub.Beautify().TrimStart('{').Trim();
+                                            resultingString += $"${{{interpolated}}}";
+                                            parserPos += sub._parserPos + 1;
+                                        }
+                                        break;
+                                }
                             }
                             else
                             {
@@ -1043,9 +1103,26 @@ namespace TsBeautify
             return new[] { c, "TK_UNKNOWN" };
         }
 
+        private string At(int position)
+        {
+            if (position > _input.Length - 1)
+            {
+                return null;
+            }
+
+            return _input[position].ToString();
+        }
+
         public string Beautify()
         {
             return _output.ToString();
         }
+
+        enum StringInterpolationKind
+        {
+            None = 1,
+            CSharp = 2,
+            TypeScript = 3
+        };
     }
 }

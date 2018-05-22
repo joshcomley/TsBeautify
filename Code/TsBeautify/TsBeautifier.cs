@@ -1,3 +1,5 @@
+using System;
+
 namespace TsBeautify
 {
     public class TsBeautifier
@@ -6,6 +8,12 @@ namespace TsBeautify
         public TsBeautifier(TsBeautifyOptions options = null)
         {
             Options = options ?? new TsBeautifyOptions();
+        }
+
+        public TsBeautifier Configure(Action<TsBeautifyOptions> configure)
+        {
+            configure(Options);
+            return this;
         }
 
         public string Beautify(string typescript)
