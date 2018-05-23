@@ -431,7 +431,14 @@ namespace TsBeautify
                                 if (_currentMode == "BLOCK" && !_isImportBlock)
                                 {
                                     PrintToken();
-                                    PrintNewLine();
+                                    if (genericsDepth > 0)
+                                    {
+                                        PrintSpace();
+                                    }
+                                    else
+                                    {
+                                        PrintNewLine();
+                                    }
                                 }
                                 else
                                 {

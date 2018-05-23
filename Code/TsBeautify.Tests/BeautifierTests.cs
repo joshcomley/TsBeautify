@@ -175,6 +175,16 @@ let y = 7;";
         }
 
         [TestMethod]
+        public void TestMultipleGenerics()
+        {
+            var code =
+                @"    private _propertiesMap: Dictionary<string, IProperty> = new Dictionary<string, IProperty>();";
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(code);
+            Assert.AreEqual(@"private _propertiesMap: Dictionary<string, IProperty> = new Dictionary<string, IProperty>();", result);
+        }
+
+        [TestMethod]
         public void TestLargeFile()
         {
             var typescript = LargeFile.Inputxx;
