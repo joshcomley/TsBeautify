@@ -86,12 +86,13 @@ namespace TsBeautify
 
             _parserPos = 0;
             var inCase = false;
+            var genericsDepth = 0;
 
             while (true)
             {
                 var t = GetNextToken(ref _parserPos);
-                _tokenText = t[0];
-                var tokenType = t[1];
+                _tokenText = t.Value;
+                var tokenType = t.TokenType;
                 if (tokenType == "TK_END_BLOCK" && interpolation && _indentLevel == 1)
                 {
                     return;
@@ -109,7 +110,7 @@ namespace TsBeautify
                         SetMode("EXPRESSION");
                         if (_lastText == ";" || _lastType == "TK_START_BLOCK")
                         {
-                            PrintNewLine(null);
+                            PrintNewLine();
                         }
                         else if (_lastType == "TK_END_EXPR" || _lastType == "TK_START_EXPR")
                         {
@@ -135,7 +136,7 @@ namespace TsBeautify
                     case "TK_START_IMPORT":
                     case "TK_END_IMPORT":
                         PrintSpace();
-                        _output.Append(t[0]);
+                        _output.Append(t.Value);
                         PrintSpace();
                         break;
                     case "TK_START_BLOCK":
@@ -153,13 +154,13 @@ namespace TsBeautify
                         {
                             if (_lastType == "TK_START_BLOCK")
                             {
-                                PrintNewLine(null);
+                                PrintNewLine();
                             }
                             else
                             {
                                 if (options.OpenBlockOnNewLine)
                                 {
-                                    PrintNewLine(null);
+                                    PrintNewLine();
                                 }
                                 else
                                 {
@@ -182,7 +183,7 @@ namespace TsBeautify
                         else
                         {
                             Unindent();
-                            PrintNewLine(null);
+                            PrintNewLine();
                         }
 
                         PrintToken();
@@ -201,6 +202,11 @@ namespace TsBeautify
                             break;
                         }
 
+                        if ((_tokenText == "extends" || _tokenText == ":") && _lastText == ">")
+                        {
+                            PrintSpace();
+                        }
+
                         if (_tokenText == "case" || _tokenText == "default")
                         {
                             if (_lastText == ":")
@@ -212,7 +218,7 @@ namespace TsBeautify
                             {
                                 // case statement starts in the same line where switch
                                 Unindent();
-                                PrintNewLine(null);
+                                PrintNewLine();
                                 Indent();
                             }
 
@@ -264,7 +270,7 @@ namespace TsBeautify
                         if (_lastType != "TK_END_BLOCK" &&
                             new[] { "else", "catch", "finally" }.Contains(_tokenText.ToLower()))
                         {
-                            PrintNewLine(null);
+                            PrintNewLine();
                         }
                         else if (lineStarters.Contains(_tokenText) || prefix == "NEWLINE")
                         {
@@ -294,7 +300,7 @@ namespace TsBeautify
                                     }
                                     else
                                     {
-                                        PrintNewLine(null);
+                                        PrintNewLine();
                                     }
                                 }
                             }
@@ -302,7 +308,7 @@ namespace TsBeautify
                             {
                                 if (lineStarters.Contains(_tokenText) && _lastText != ")")
                                 {
-                                    PrintNewLine(null);
+                                    PrintNewLine();
                                 }
                             }
                         }
@@ -337,7 +343,7 @@ namespace TsBeautify
 
                         if (_lastType == "TK_START_BLOCK" || _lastType == "TK_END_BLOCK" || _lastType == "TK_SEMICOLON")
                         {
-                            PrintNewLine(null);
+                            PrintNewLine();
                         }
                         else if (_lastType == "TK_WORD" && _lastText != "$")
                         {
@@ -347,7 +353,24 @@ namespace TsBeautify
                         PrintToken();
                         break;
                     case "TK_GENERICS":
-                        _output.Append(t[0]);
+                        if (t.Value == "<")
+                        {
+                            if (genericsDepth == 0)
+                            {
+                                if (_lastType == "TK_WORD" &&
+                                    (_lastText == "return"))
+                                {
+                                    PrintSpace();
+                                }
+                            }
+                            _output.Append(t.Value);
+                            genericsDepth++;
+                        }
+                        else
+                        {
+                            _output.Append(t.Value);
+                            genericsDepth--;
+                        }
                         break;
                     case "TK_OPERATOR":
 
@@ -370,7 +393,7 @@ namespace TsBeautify
                         if (_tokenText == ":" && inCase)
                         {
                             PrintToken(); // colon really asks for separate treatment
-                            PrintNewLine(null);
+                            PrintNewLine();
                             inCase = false;
                             break;
                         }
@@ -389,7 +412,7 @@ namespace TsBeautify
                                 if (varLineTainted)
                                 {
                                     PrintToken();
-                                    PrintNewLine(null);
+                                    PrintNewLine();
                                     varLineTainted = false;
                                 }
                                 else
@@ -401,14 +424,14 @@ namespace TsBeautify
                             else if (_lastType == "TK_END_BLOCK")
                             {
                                 PrintToken();
-                                PrintNewLine(null);
+                                PrintNewLine();
                             }
                             else
                             {
                                 if (_currentMode == "BLOCK" && !_isImportBlock)
                                 {
                                     PrintToken();
-                                    PrintNewLine(null);
+                                    PrintNewLine();
                                 }
                                 else
                                 {
@@ -428,7 +451,7 @@ namespace TsBeautify
                                 if (_currentMode == "BLOCK")
                                 {
                                     // { foo; --i }
-                                    PrintNewLine(null);
+                                    PrintNewLine();
                                     startDelim = true;
                                     endDelim = false;
                                 }
@@ -443,7 +466,7 @@ namespace TsBeautify
                             {
                                 if (_lastText == "{")
                                 {
-                                    PrintNewLine(null);
+                                    PrintNewLine();
                                 }
 
                                 startDelim = false;
@@ -505,18 +528,24 @@ namespace TsBeautify
                         break;
 
                     case "TK_BLOCK_COMMENT":
-
-                        PrintNewLine(null);
+                        PrintNewLineOrSpace(t);
                         PrintToken();
-                        PrintNewLine(null);
+                        PrintNewLineOrSpace(t);
                         break;
 
                     case "TK_COMMENT":
 
                         // print_newline();
-                        PrintSpace();
+                        if (_lastType == "TK_START_BLOCK")
+                        {
+                            PrintNewLine();
+                        }
+                        else
+                        {
+                            PrintNewLineOrSpace(t);
+                        }
                         PrintToken();
-                        PrintNewLine(null);
+                        PrintNewLine();
                         break;
 
                     case "TK_UNKNOWN":
@@ -527,6 +556,20 @@ namespace TsBeautify
                 _lastType = tokenType;
                 _lastText = _tokenText;
             }
+        }
+
+        private bool PrintNewLineOrSpace(Token t)
+        {
+            if (t.NewLineCount > 0)
+            {
+                PrintNewLine();
+                return true;
+            }
+            else
+            {
+                PrintSpace();
+            }
+            return false;
         }
 
         private bool InGenerics => _genericsDepth > 0;
@@ -541,7 +584,7 @@ namespace TsBeautify
             }
         }
 
-        private void PrintNewLine(bool? ignoreRepeated)
+        private void PrintNewLine(bool? ignoreRepeated = null)
         {
             ignoreRepeated = ignoreRepeated ?? true;
 
@@ -667,13 +710,13 @@ namespace TsBeautify
             return false;
         }
 
-        private string[] GetNextToken(ref int parserPos)
+        private Token GetNextToken(ref int parserPos)
         {
-            var nNewlines = 0;
+            var newLineCount = 0;
 
             if (parserPos >= _input.Length)
             {
-                return new[] { "", "TK_EOF" };
+                return new Token("", "TK_EOF", newLineCount);
             }
 
             var c = _input[parserPos].ToString();
@@ -683,12 +726,12 @@ namespace TsBeautify
             {
                 if (parserPos >= _input.Length)
                 {
-                    return new[] { "", "TK_EOF" };
+                    return new Token("", "TK_EOF", newLineCount);
                 }
 
                 if (c == "\n")
                 {
-                    nNewlines++;
+                    newLineCount++;
                 }
 
                 c = _input[parserPos].ToString();
@@ -699,7 +742,7 @@ namespace TsBeautify
 
             if (_optPreserveNewlines)
             {
-                if (nNewlines > 1)
+                if (newLineCount > 1)
                 {
                     for (var i = 0; i < 2; i++)
                     {
@@ -707,7 +750,7 @@ namespace TsBeautify
                     }
                 }
 
-                wantedNewline = nNewlines == 1;
+                wantedNewline = newLineCount == 1;
             }
 
             var isGenerics = false;
@@ -750,7 +793,7 @@ namespace TsBeautify
 
             if (isGenerics && _genericsBrackets.Contains(c))
             {
-                return new[] { c, "TK_GENERICS" };
+                return new Token(c, "TK_GENERICS", newLineCount);
             }
 
 
@@ -777,31 +820,31 @@ namespace TsBeautify
                     parserPos++;
 
                     var t = GetNextToken(ref parserPos);
-                    c += sign + t[0];
-                    return new[] { c, "TK_WORD" };
+                    c += sign + t.Value;
+                    return new Token(c, "TK_WORD", newLineCount);
                 }
 
                 if (c == "in")
                 {
-                    return new[] { c, "TK_OPERATOR" };
+                    return new Token(c, "TK_OPERATOR", newLineCount);
                 }
 
                 if (wantedNewline && _lastType != "TK_OPERATOR" && !_ifLineFlag)
                 {
-                    PrintNewLine(null);
+                    PrintNewLine();
                 }
 
-                return new[] { c, "TK_WORD" };
+                return new Token(c, "TK_WORD", newLineCount);
             }
 
             if (c == "(" || c == "[")
             {
-                return new[] { c, "TK_START_EXPR" };
+                return new Token(c, "TK_START_EXPR", newLineCount);
             }
 
             if (c == ")" || c == "]")
             {
-                return new[] { c, "TK_END_EXPR" };
+                return new Token(c, "TK_END_EXPR", newLineCount);
             }
 
             if (c == "{")
@@ -809,9 +852,9 @@ namespace TsBeautify
                 if (_lastText == "import")
                 {
                     _isImportBlock = true;
-                    return new[] { c, "TK_START_IMPORT" };
+                    return new Token(c, "TK_START_IMPORT", newLineCount);
                 }
-                return new[] { c, "TK_START_BLOCK" };
+                return new Token(c, "TK_START_BLOCK", newLineCount);
             }
 
             if (c == "}")
@@ -819,14 +862,14 @@ namespace TsBeautify
                 if (_isImportBlock)
                 {
                     _isImportBlock = false;
-                    return new[] { c, "TK_END_IMPORT" };
+                    return new Token(c, "TK_END_IMPORT", newLineCount);
                 }
-                return new[] { c, "TK_END_BLOCK" };
+                return new Token(c, "TK_END_BLOCK", newLineCount);
             }
 
             if (c == ";")
             {
-                return new[] { c, "TK_SEMICOLON" };
+                return new Token(c, "TK_SEMICOLON", newLineCount);
             }
 
             if (c == "/")
@@ -850,7 +893,7 @@ namespace TsBeautify
                     }
 
                     parserPos += 2;
-                    return new[] { "/*" + comment + "*/", "TK_BLOCK_COMMENT" };
+                    return new Token("/*" + comment + "*/", "TK_BLOCK_COMMENT", newLineCount);
                 }
 
                 if (_input[parserPos] == '/')
@@ -869,10 +912,10 @@ namespace TsBeautify
                     parserPos++;
                     if (wantedNewline)
                     {
-                        PrintNewLine(null);
+                        PrintNewLine();
                     }
 
-                    return new[] { comment, "TK_COMMENT" };
+                    return new Token(comment, "TK_COMMENT", newLineCount);
                 }
             }
 
@@ -937,7 +980,7 @@ namespace TsBeautify
                             parserPos++;
                             if (parserPos >= _input.Length)
                             {
-                                return new[] { resultingString, "TK_STRING" };
+                                return new Token(resultingString, "TK_STRING", newLineCount);
                             }
                         }
                     }
@@ -1024,7 +1067,7 @@ namespace TsBeautify
 
                             if (parserPos >= _input.Length)
                             {
-                                return new[] { resultingString, "TK_STRING" };
+                                return new Token(resultingString, "TK_STRING", newLineCount);
                             }
                         }
                     }
@@ -1043,7 +1086,7 @@ namespace TsBeautify
                     }
                 }
 
-                return new[] { resultingString, "TK_STRING" };
+                return new Token(resultingString, "TK_STRING", newLineCount);
             }
 
             if (c == "#")
@@ -1060,10 +1103,10 @@ namespace TsBeautify
 
                     if (c == "#")
                     {
-                        return new[] { sharp, "TK_WORD" };
+                        return new Token(sharp, "TK_WORD", newLineCount);
                     }
 
-                    return new[] { sharp, "TK_OPERATOR" };
+                    return new Token(sharp, "TK_OPERATOR", newLineCount);
                 }
             }
 
@@ -1071,7 +1114,7 @@ namespace TsBeautify
             if (c == "<" && _input.Substring(parserPos - 1, 3) == "<!--")
             {
                 parserPos += 3;
-                return new[] { "<!--", "TK_COMMENT" };
+                return new Token("<!--", "TK_COMMENT", newLineCount);
             }
 
             if (c == "-" && _input.Substring(parserPos - 1, 2) == "-->")
@@ -1079,10 +1122,10 @@ namespace TsBeautify
                 parserPos += 2;
                 if (wantedNewline)
                 {
-                    PrintNewLine(null);
+                    PrintNewLine();
                 }
 
-                return new[] { "-->", "TK_COMMENT" };
+                return new Token("-->", "TK_COMMENT", newLineCount);
             }
 
             if (_punct.Contains(c))
@@ -1097,10 +1140,10 @@ namespace TsBeautify
                     }
                 }
 
-                return new[] { c, "TK_OPERATOR" };
+                return new Token(c, "TK_OPERATOR", newLineCount);
             }
 
-            return new[] { c, "TK_UNKNOWN" };
+            return new Token(c, "TK_UNKNOWN", newLineCount);
         }
 
         private string At(int position)
@@ -1124,5 +1167,19 @@ namespace TsBeautify
             CSharp = 2,
             TypeScript = 3
         };
+    }
+
+    internal class Token
+    {
+        public string Value { get; set; }
+        public string TokenType { get; set; }
+        public int NewLineCount { get; set; }
+
+        public Token(string token, string tokenType, int newLineCount = 0)
+        {
+            Value = token;
+            TokenType = tokenType;
+            NewLineCount = newLineCount;
+        }
     }
 }

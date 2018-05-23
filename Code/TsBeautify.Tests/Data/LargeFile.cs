@@ -83,7 +83,7 @@ export class TsBeautifierInstance {
                 parserPos(parserPos() + 1);
             }
             if (parserPos() >= this._input.length) {
-                return<Array<string>>[resultingString, `TK_STRING`];
+                return <Array<string>>[resultingString, `TK_STRING`];
             }
         }
     }

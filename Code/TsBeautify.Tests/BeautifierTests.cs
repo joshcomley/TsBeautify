@@ -51,6 +51,50 @@ namespace TsBeautify.Tests
         }
 
         [TestMethod]
+        public void ClassNameWithGenericsShouldHaveSpace()
+        {
+            var code = @"class MyClass<T> extends MyOtherClass {
+    SomeMethod(): string {
+        let x = <string><any>"""";
+        return <string><any>"""";
+    }
+}";
+            var beautifier = new TsBeautifier().Configure(x => x.OpenBlockOnNewLine = true);
+            var result = beautifier.Beautify(code);
+            Assert.AreEqual(
+                @"class MyClass<T> extends MyOtherClass
+{
+    SomeMethod() : string
+    {
+        let x = <string><any>"""";
+        return <string><any>"""";
+    }
+}",
+                result);
+        }
+
+        [TestMethod]
+        public void TestSingleLineCommentShouldBeOnNewLine()
+        {
+            var code = @"if (true)
+                {
+                    // I am a comment
+                    var x = 1; // An am an end-of-line comment
+                    var y = /* I am an in-line comment */ 2;
+                    // I am another comment
+                }";
+            var beautifier = new TsBeautifier().Configure(x => x.OpenBlockOnNewLine = true);
+            var result = beautifier.Beautify(code);
+            Assert.AreEqual(@"if (true)
+{
+    // I am a comment
+    var x = 1; // An am an end-of-line comment
+    var y = /* I am an in-line comment */ 2;
+    // I am another comment
+}", result);
+        }
+
+        [TestMethod]
         public void TestDivide()
         {
             var typescript = @"
@@ -164,7 +208,7 @@ let y = 7;";
 case ""number"":
     return """" + key;
 case ""string"":
-    return<string><any>key;
+    return <string><any>key;
 case ""function"":
     {
         let name = key[""ClassName""] || key[""Name""] || key[""name""]; //TypeInfo.NameOf(key);
