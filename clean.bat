@@ -1,0 +1,1 @@
+call del Packaged\TsBeautify.Tests.*

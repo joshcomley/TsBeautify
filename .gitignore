@@ -18,7 +18,6 @@ yarn.lock
 npm-debug.log.*
 
 # Build results
-/*.bat
 /Code/Build/key.snk
 [Dd]ebug/
 [Dd]ebugPublic/
