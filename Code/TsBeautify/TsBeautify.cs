@@ -73,7 +73,7 @@ namespace TsBeautify
             _generics = _whitespace + _wordchar + _digits + "," + _genericsBrackets;
             // <!-- is a special case (ok, it's a minor hack actually)
             _punct =
-                "=> + - * / % & ++ -- = += -= *= /= %= == === != !== > < >= <= >> << >>> >>>= >>= <<= && &= | || ! !! , : ? ^ ^= |= ::"
+                "=> + - * / % & ++ -- = += -= *= /= %= == === != !== > < >= <= >> << >>> >>>= >>= <<= && &= | || ?? ! !! , : ? ^ ^= |= ::"
                     .Split(' ');
 
             // words which should always start on new line.

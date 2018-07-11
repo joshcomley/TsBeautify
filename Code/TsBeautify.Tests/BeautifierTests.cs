@@ -8,6 +8,13 @@ namespace TsBeautify.Tests
     public class BeautifierTests
     {
         [TestMethod]
+        public void TestCSharpCoalesceOperator()
+        {
+            var result = Beautify(@"var callbackMatch = abc ?? def;");
+            Assert.AreEqual(@"var callbackMatch = abc ?? def;", result);
+        }
+
+        [TestMethod]
         public void TestAtEscapedString()
         {
             var result = Beautify(@"var callbackMatch = Regex.Match(line, @""typedef [A-Za-z0-9_]+ [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");");
