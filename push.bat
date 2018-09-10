@@ -1,1 +1,1 @@
-call nuget push "%~dp0Packaged\TsBeautify.*.nupkg" -Source %BrandlessNuGet%
+call nuget push "%~dp0Packaged\*.nupkg" -Source %BrandlessNuGet%

@@ -201,6 +201,17 @@ let y = 7;";
         }
 
         [TestMethod]
+        public void TestHugeConversion()
+        {
+            var typescript = TsBeautifyTs.Code;
+            for (var i = 0; i < 1000; i++)
+            {
+                var beautifier = new TsBeautifier();
+                var result = beautifier.Beautify(typescript);
+            }
+        }
+
+        [TestMethod]
         public void TestKeyWordInLiteral()
         {
             var typescript = @"        switch (type) {

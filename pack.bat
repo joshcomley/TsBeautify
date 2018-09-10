@@ -1,1 +1,1 @@
-call %NuGetSynchroniser%
+call %NuGetSynchroniser% -i TsBeautify.Tests.csproj,TsBeautify.ConsoleApp.csproj

@@ -9,33 +9,51 @@ namespace TsBeautify
 {
     internal class TsBeautifierInstance
     {
-        private readonly string _digits;
-        private readonly string _genericsBrackets;
+        private const string WhitespaceChars = "\n\r\t ";
+        private const string WordChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$";
+        private const string Chars = "0123456789";
+        private const string GenericsChars = "<>";
+        private readonly Dictionary<string, bool> _digits;
+        private readonly Dictionary<char, bool> _digitsChars;
+        private readonly Dictionary<string, bool> _generics;
+        private readonly Dictionary<string, bool> _genericsBrackets;
+        private readonly Dictionary<char, bool> _genericsBracketsChars;
+        private readonly Dictionary<char, bool> _genericsChars;
         private readonly string _indentString;
         private readonly string _input;
-        private readonly string _lastText;
-        private readonly string _lastType;
+        private readonly Dictionary<string, bool> _lineStarters;
 
-        private readonly Stack<string> _modes;
+        private readonly Stack<TsMode> _modes;
+        private readonly TsBeautifyOptions _options;
         private readonly bool _optPreserveNewlines;
         private readonly StringBuilder _output;
-        private readonly int _parserPos;
-        private readonly string[] _punct;
-        private readonly string _tokenText;
+        private readonly Dictionary<string, bool> _punctuation;
+        private readonly Dictionary<string, bool> _whitespace;
+        private readonly Dictionary<char, bool> _whitespaceChars;
+        private readonly Dictionary<string, bool> _wordchar;
+        private readonly Dictionary<char, bool> _wordcharChars;
 
-        private readonly string _whitespace;
-        private readonly string _wordchar;
-        private string _currentMode;
+        private TsMode _currentMode;
         private bool _doBlockJustClosed;
-        private readonly string _generics;
         private int _genericsDepth;
         private bool _ifLineFlag;
         private int _indentLevel;
-        private readonly TsBeautifyOptions _options;
         private bool _isImportBlock;
+        private char _secondToLastChar;
+        private int _secondToLastCharIndex = -1;
+        private char _currentInputChar;
+        private int _currentInputCharIndex = -1;
+        private string _lastText;
+        private TokenType _lastType;
+        private int _parserPos;
+
+        private Token _token;
+        private string _tokenText;
 
         public TsBeautifierInstance(string jsSourceText, TsBeautifyOptions options = null, bool interpolation = false)
         {
+            _token = new Token(null, TokenType.BlockComment);
+            Interpolation = interpolation;
             options = options ?? new TsBeautifyOptions();
             _options = options;
             var optIndentSize = options.IndentSize ?? 4;
@@ -43,7 +61,7 @@ namespace TsBeautify
             var optIndentLevel = options.IndentLevel ?? 0;
             _optPreserveNewlines = options.PreserveNewlines ?? true;
             _output = new StringBuilder();
-            _modes = new Stack<string>();
+            _modes = new Stack<TsMode>();
 
             _indentString = "";
 
@@ -58,69 +76,150 @@ namespace TsBeautify
 
             _input = jsSourceText;
 
-            var lastWord = "";
-            _lastType = "TK_START_EXPR"; // last token type
+            _lastType = TokenType.StartExpression; // last token type
             _lastText = ""; // last token text
 
             _doBlockJustClosed = false;
-            var varLine = false;
-            var varLineTainted = false;
 
-            _whitespace = "\n\r\t ";
-            _wordchar = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_$";
-            _digits = "0123456789";
-            _genericsBrackets = "<>";
-            _generics = _whitespace + _wordchar + _digits + "," + _genericsBrackets;
+            _whitespace = ToLookup(WhitespaceChars);
+            _whitespaceChars = ToCharLookup(_whitespace);
+            _wordchar = ToLookup(WordChars);
+            _digits = ToLookup(Chars);
+            _genericsBrackets = ToLookup(GenericsChars);
+            _generics = ToLookup(WhitespaceChars + WordChars + "," + GenericsChars);
+            _digitsChars = ToCharLookup(_digits);
+            _wordcharChars = ToCharLookup(_wordchar);
+            _genericsChars = ToCharLookup(_generics);
+            _genericsBracketsChars = ToCharLookup(_genericsBrackets);
             // <!-- is a special case (ok, it's a minor hack actually)
-            _punct =
-                "=> + - * / % & ++ -- = += -= *= /= %= == === != !== > < >= <= >> << >>> >>>= >>= <<= && &= | || ?? ! !! , : ? ^ ^= |= ::"
-                    .Split(' ');
+            _punctuation =
+                ArrayToLookup(
+                    "=> + - * / % & ++ -- = += -= *= /= %= == === != !== > < >= <= >> << >>> >>>= >>= <<= && &= | || ?? ! !! , : ? ^ ^= |= ::"
+                        .Split(' '));
 
             // words which should always start on new line.
-            var lineStarters = "@test,import,let,continue,try,throw,return,var,if,switch,case,default,for,while,break,function".Split(',');
+            _lineStarters =
+                ArrayToLookup(
+                    "@test,import,let,continue,try,throw,return,var,if,switch,case,default,for,while,break,function"
+                        .Split(','));
 
             // states showing if we are currently in expression (i.e. "if" case) - 'EXPRESSION', or in usual block (like, procedure), 'BLOCK'.
             // some formatting depends on that.
-            _currentMode = "BLOCK";
+            _currentMode = TsMode.Block;
             _modes.Push(_currentMode);
 
             _parserPos = 0;
+        }
+
+        public bool Interpolation { get; }
+
+        private bool InGenerics => _genericsDepth > 0;
+
+        public char SecondToLastChar
+        {
+            get
+            {
+                if (_secondToLastCharIndex != _output.Length)
+                {
+                    _secondToLastCharIndex = _output.Length;
+                    _secondToLastChar = _output[_output.Length - 1];
+                }
+
+                return _secondToLastChar;
+            }
+        }
+
+        public char CurrentInputChar
+        {
+            get
+            {
+                if (_currentInputCharIndex != _parserPos)
+                {
+                    _currentInputCharIndex = _parserPos;
+                    _currentInputChar = _input[_parserPos];
+                }
+
+                return _currentInputChar;
+            }
+        }
+
+        public static Dictionary<string, bool> ToLookup(string str)
+        {
+            var chars = str.ToCharArray();
+            var dic = new Dictionary<string, bool>();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                dic.Add(chars[i].ToString(), true);
+            }
+
+            return dic;
+        }
+
+        public static Dictionary<string, bool> ArrayToLookup(IEnumerable<string> str)
+        {
+            var strings = str.ToArray();
+            var dic = new Dictionary<string, bool>();
+            for (var i = 0; i < strings.Length; i++)
+            {
+                dic.Add(strings[i], true);
+            }
+
+            return dic;
+        }
+
+        public static Dictionary<char, bool> ToCharLookup(Dictionary<string, bool> lookup)
+        {
+            var dic = new Dictionary<char, bool>();
+            foreach (var kvp in lookup)
+            {
+                dic.Add(kvp.Key[0], true);
+            }
+
+            return dic;
+        }
+
+        public void Parse()
+        {
+            var lastWord = "";
+            var varLine = false;
+            var varLineTainted = false;
             var inCase = false;
             var genericsDepth = 0;
-
+            var interpolation = Interpolation;
             while (true)
             {
-                var t = GetNextToken(ref _parserPos);
-                _tokenText = t.Value;
-                var tokenType = t.TokenType;
-                if (tokenType == "TK_END_BLOCK" && interpolation && _indentLevel == 1)
+                GetNextToken();
+                _tokenText = _token.Value;
+                var tokenType = _token.TokenType;
+                if (tokenType == TokenType.EndBlock && interpolation && _indentLevel == 1)
                 {
                     return;
                 }
 
-                if (tokenType == "TK_EOF")
+                if (tokenType == TokenType.EndOfFile)
                 {
                     break;
                 }
 
                 switch (tokenType)
                 {
-                    case "TK_START_EXPR":
+                    case TokenType.StartExpression:
                         varLine = false;
-                        SetMode("EXPRESSION");
-                        if (_lastText == ";" || _lastType == "TK_START_BLOCK")
+                        SetMode(TsMode.Expression);
+                        if (_lastText == ";" || _lastType == TokenType.StartBlock)
                         {
                             PrintNewLine();
                         }
-                        else if (_lastType == "TK_END_EXPR" || _lastType == "TK_START_EXPR")
+                        else if (_lastType == TokenType.EndExpression || _lastType == TokenType.StartExpression)
                         {
                             // do nothing on (( and )( and ][ and ]( ..
                         }
-                        else if (_lastType != "TK_WORD" && _lastType != "TK_OPERATOR" && _lastType != "TK_GENERICS")
+                        else if (_lastType != TokenType.Word && _lastType != TokenType.Operator &&
+                                 _lastType != TokenType.Generics)
                         {
                             PrintSpace();
                         }
-                        else if (lineStarters.Contains(lastWord))
+                        else if (_lineStarters.ContainsKey(lastWord))
                         {
                             PrintSpace();
                         }
@@ -128,37 +227,37 @@ namespace TsBeautify
                         PrintToken();
                         break;
 
-                    case "TK_END_EXPR":
+                    case TokenType.EndExpression:
                         PrintToken();
                         RestoreMode();
                         break;
 
-                    case "TK_START_IMPORT":
-                    case "TK_END_IMPORT":
+                    case TokenType.StartImport:
+                    case TokenType.EndImport:
                         PrintSpace();
-                        _output.Append(t.Value);
+                        _output.Append(_token.Value);
                         PrintSpace();
                         break;
-                    case "TK_START_BLOCK":
+                    case TokenType.StartBlock:
 
                         if (lastWord == "do")
                         {
-                            SetMode("DO_BLOCK");
+                            SetMode(TsMode.DoBlock);
                         }
                         else
                         {
-                            SetMode("BLOCK");
+                            SetMode(TsMode.Block);
                         }
 
-                        if (_lastType != "TK_OPERATOR" && _lastType != "TK_START_EXPR")
+                        if (_lastType != TokenType.Operator && _lastType != TokenType.StartExpression)
                         {
-                            if (_lastType == "TK_START_BLOCK")
+                            if (_lastType == TokenType.StartBlock)
                             {
                                 PrintNewLine();
                             }
                             else
                             {
-                                if (options.OpenBlockOnNewLine)
+                                if (_options.OpenBlockOnNewLine)
                                 {
                                     PrintNewLine();
                                 }
@@ -173,8 +272,8 @@ namespace TsBeautify
                         Indent();
                         break;
 
-                    case "TK_END_BLOCK":
-                        if (_lastType == "TK_START_BLOCK")
+                    case TokenType.EndBlock:
+                        if (_lastType == TokenType.StartBlock)
                         {
                             // nothing
                             TrimOutput();
@@ -190,7 +289,7 @@ namespace TsBeautify
                         RestoreMode();
                         break;
 
-                    case "TK_WORD":
+                    case TokenType.Word:
 
                         if (_doBlockJustClosed)
                         {
@@ -229,9 +328,9 @@ namespace TsBeautify
 
                         var prefix = "NONE";
 
-                        if (_lastType == "TK_END_BLOCK")
+                        if (_lastType == TokenType.EndBlock)
                         {
-                            if (!new[] { "else", "catch", "finally" }.Contains(_tokenText.ToLower()))
+                            if (!new[] {"else", "catch", "finally"}.Contains(_tokenText.ToLower()))
                             {
                                 prefix = "NEWLINE";
                             }
@@ -241,60 +340,61 @@ namespace TsBeautify
                                 PrintSpace();
                             }
                         }
-                        else if (_lastType == "TK_SEMICOLON" && (_currentMode == "BLOCK" || _currentMode == "DO_BLOCK"))
+                        else if (_lastType == TokenType.SemiColon &&
+                                 (_currentMode == TsMode.Block || _currentMode == TsMode.DoBlock))
                         {
                             prefix = "NEWLINE";
                         }
-                        else if (_lastType == "TK_SEMICOLON" && _currentMode == "EXPRESSION")
+                        else if (_lastType == TokenType.SemiColon && _currentMode == TsMode.Expression)
                         {
                             prefix = "SPACE";
                         }
-                        else if (_lastType == "TK_STRING")
+                        else if (_lastType == TokenType.String)
                         {
                             prefix = "NEWLINE";
                         }
-                        else if (_lastType == "TK_WORD")
+                        else if (_lastType == TokenType.Word)
                         {
                             prefix = "SPACE";
                         }
-                        else if (_lastType == "TK_START_BLOCK")
+                        else if (_lastType == TokenType.StartBlock)
                         {
                             prefix = "NEWLINE";
                         }
-                        else if (_lastType == "TK_END_EXPR")
+                        else if (_lastType == TokenType.EndExpression)
                         {
                             PrintSpace();
                             prefix = "NEWLINE";
                         }
 
-                        if (_lastType != "TK_END_BLOCK" &&
-                            new[] { "else", "catch", "finally" }.Contains(_tokenText.ToLower()))
+                        if (_lastType != TokenType.EndBlock &&
+                            new[] {"else", "catch", "finally"}.Contains(_tokenText.ToLower()))
                         {
                             PrintNewLine();
                         }
-                        else if (lineStarters.Contains(_tokenText) || prefix == "NEWLINE")
+                        else if (_lineStarters.ContainsKey(_tokenText) || prefix == "NEWLINE")
                         {
                             if (_lastText == "else")
                             {
                                 // no need to force newline on else break
                                 PrintSpace();
                             }
-                            else if ((_lastType == "TK_START_EXPR" || _lastText == "=" || _lastText == ",") &&
+                            else if ((_lastType == TokenType.StartExpression || _lastText == "=" || _lastText == ",") &&
                                      _tokenText == "function")
                             {
                                 // no need to force newline on "function": (function
                                 // DONOTHING
                             }
-                            else if (_lastType == "TK_WORD" && (_lastText == "return" || _lastText == "throw"))
+                            else if (_lastType == TokenType.Word && (_lastText == "return" || _lastText == "throw"))
                             {
                                 // no newline between "return nnn"
                                 PrintSpace();
                             }
-                            else if (_lastType != "TK_END_EXPR")
+                            else if (_lastType != TokenType.EndExpression)
                             {
-                                if ((_lastType != "TK_START_EXPR" || _tokenText != "var") && _lastText != ":")
+                                if ((_lastType != TokenType.StartExpression || _tokenText != "var") && _lastText != ":")
                                 {
-                                    if (_tokenText == "if" && _lastType == "TK_WORD" && lastWord == "else")
+                                    if (_tokenText == "if" && _lastType == TokenType.Word && lastWord == "else")
                                     {
                                         PrintSpace();
                                     }
@@ -306,7 +406,7 @@ namespace TsBeautify
                             }
                             else
                             {
-                                if (lineStarters.Contains(_tokenText) && _lastText != ")")
+                                if (_lineStarters.ContainsKey(_tokenText) && _lastText != ")")
                                 {
                                     PrintNewLine();
                                 }
@@ -333,46 +433,49 @@ namespace TsBeautify
 
                         break;
 
-                    case "TK_SEMICOLON":
+                    case TokenType.SemiColon:
 
                         PrintToken();
                         varLine = false;
                         break;
 
-                    case "TK_STRING":
+                    case TokenType.String:
 
-                        if (_lastType == "TK_START_BLOCK" || _lastType == "TK_END_BLOCK" || _lastType == "TK_SEMICOLON")
+                        if (_lastType == TokenType.StartBlock || _lastType == TokenType.EndBlock ||
+                            _lastType == TokenType.SemiColon)
                         {
                             PrintNewLine();
                         }
-                        else if (_lastType == "TK_WORD" && _lastText != "$")
+                        else if (_lastType == TokenType.Word && _lastText != "$")
                         {
                             PrintSpace();
                         }
 
                         PrintToken();
                         break;
-                    case "TK_GENERICS":
-                        if (t.Value == "<")
+                    case TokenType.Generics:
+                        if (_token.Value == "<")
                         {
                             if (genericsDepth == 0)
                             {
-                                if (_lastType == "TK_WORD" &&
-                                    (_lastText == "return"))
+                                if (_lastType == TokenType.Word &&
+                                    _lastText == "return")
                                 {
                                     PrintSpace();
                                 }
                             }
-                            _output.Append(t.Value);
+
+                            _output.Append(_token.Value);
                             genericsDepth++;
                         }
                         else
                         {
-                            _output.Append(t.Value);
+                            _output.Append(_token.Value);
                             genericsDepth--;
                         }
+
                         break;
-                    case "TK_OPERATOR":
+                    case TokenType.Operator:
 
                         var startDelim = true;
                         var endDelim = true;
@@ -385,7 +488,7 @@ namespace TsBeautify
                             }
                         }
 
-                        if (varLine && _tokenText == "," && _currentMode == "EXPRESSION")
+                        if (varLine && _tokenText == "," && _currentMode == TsMode.Expression)
                         {
                             varLineTainted = false;
                         }
@@ -421,14 +524,14 @@ namespace TsBeautify
                                     PrintSpace();
                                 }
                             }
-                            else if (_lastType == "TK_END_BLOCK")
+                            else if (_lastType == TokenType.EndBlock)
                             {
                                 PrintToken();
                                 PrintNewLine();
                             }
                             else
                             {
-                                if (_currentMode == "BLOCK" && !_isImportBlock)
+                                if (_currentMode == TsMode.Block && !_isImportBlock)
                                 {
                                     PrintToken();
                                     if (genericsDepth > 0)
@@ -455,7 +558,7 @@ namespace TsBeautify
                             // unary operators special case
                             if (_lastText == ";")
                             {
-                                if (_currentMode == "BLOCK")
+                                if (_currentMode == TsMode.Block)
                                 {
                                     // { foo; --i }
                                     PrintNewLine();
@@ -487,18 +590,18 @@ namespace TsBeautify
                             endDelim = false;
                         }
                         else if ((_tokenText == "!" || _tokenText == "+" || _tokenText == "-") &&
-                                 _lastType == "TK_START_EXPR")
+                                 _lastType == TokenType.StartExpression)
                         {
                             // special case handling: if (!a)
                             startDelim = false;
                             endDelim = false;
                         }
-                        else if (_lastType == "TK_OPERATOR")
+                        else if (_lastType == TokenType.Operator)
                         {
                             startDelim = false;
                             endDelim = false;
                         }
-                        else if (_lastType == "TK_END_EXPR")
+                        else if (_lastType == TokenType.EndExpression)
                         {
                             startDelim = true;
                             endDelim = true;
@@ -534,28 +637,29 @@ namespace TsBeautify
 
                         break;
 
-                    case "TK_BLOCK_COMMENT":
-                        PrintNewLineOrSpace(t);
+                    case TokenType.BlockComment:
+                        PrintNewLineOrSpace(_token);
                         PrintToken();
-                        PrintNewLineOrSpace(t);
+                        PrintNewLineOrSpace(_token);
                         break;
 
-                    case "TK_COMMENT":
+                    case TokenType.Comment:
 
                         // print_newline();
-                        if (_lastType == "TK_START_BLOCK")
+                        if (_lastType == TokenType.StartBlock)
                         {
                             PrintNewLine();
                         }
                         else
                         {
-                            PrintNewLineOrSpace(t);
+                            PrintNewLineOrSpace(_token);
                         }
+
                         PrintToken();
                         PrintNewLine();
                         break;
 
-                    case "TK_UNKNOWN":
+                    case TokenType.Unknown:
                         PrintToken();
                         break;
                 }
@@ -572,20 +676,15 @@ namespace TsBeautify
                 PrintNewLine();
                 return true;
             }
-            else
-            {
-                PrintSpace();
-            }
+
+            PrintSpace();
             return false;
         }
 
-        private bool InGenerics => _genericsDepth > 0;
-
-
         private void TrimOutput()
         {
-            while (_output.Length > 0 && (_output[_output.Length - 1] == ' ' ||
-                                          _output[_output.Length - 1].ToString() == _indentString))
+            while (_output.Length > 0 && (SecondToLastChar == ' ' ||
+                                          SecondToLastChar == _indentString[0]))
             {
                 _output.Remove(_output.Length - 1, 1);
             }
@@ -603,7 +702,7 @@ namespace TsBeautify
                 return;
             }
 
-            if (_output[_output.Length - 1] != '\n' || !ignoreRepeated.Value)
+            if (SecondToLastChar != '\n' || !ignoreRepeated.Value)
             {
                 _output.Append(Environment.NewLine);
             }
@@ -616,13 +715,7 @@ namespace TsBeautify
 
         private void PrintSpace()
         {
-            var lastOutput = " ";
-            if (_output.Length > 0)
-            {
-                lastOutput = _output[_output.Length - 1].ToString();
-            }
-
-            if (lastOutput != " " && lastOutput != "\n" && lastOutput != _indentString)
+            if (SecondToLastChar != ' ' && SecondToLastChar != '\n' && SecondToLastChar != _indentString[0])
             {
                 _output.Append(' ');
             }
@@ -649,13 +742,13 @@ namespace TsBeautify
 
         private void RemoveIndent()
         {
-            if (_output.Length > 0 && _output[_output.Length - 1].ToString() == _indentString)
+            if (_output.Length > 0 && SecondToLastChar == _indentString[0])
             {
                 _output.Remove(_output.Length - 1, 1);
             }
         }
 
-        private void SetMode(string mode)
+        private void SetMode(TsMode mode)
         {
             _modes.Push(_currentMode);
             _currentMode = mode;
@@ -663,7 +756,7 @@ namespace TsBeautify
 
         private void RestoreMode()
         {
-            _doBlockJustClosed = _currentMode == "DO_BLOCK";
+            _doBlockJustClosed = _currentMode == TsMode.DoBlock;
             _currentMode = _modes.Pop();
         }
 
@@ -717,34 +810,37 @@ namespace TsBeautify
             return false;
         }
 
-        private Token GetNextToken(ref int parserPos)
+        private void GetNextToken()
         {
             var newLineCount = 0;
 
-            if (parserPos >= _input.Length)
+            if (_parserPos >= _input.Length)
             {
-                return new Token("", "TK_EOF", newLineCount);
+                SetToken("", TokenType.EndOfFile, newLineCount);
+                return;
             }
 
-            var c = _input[parserPos].ToString();
-            parserPos++;
+            var currentChar = CurrentInputChar;
+            _parserPos++;
 
-            while (_whitespace.Contains(c))
+            while (_whitespaceChars.ContainsKey(currentChar))
             {
-                if (parserPos >= _input.Length)
+                if (_parserPos >= _input.Length)
                 {
-                    return new Token("", "TK_EOF", newLineCount);
+                    SetToken("", TokenType.EndOfFile, newLineCount);
+                    return;
                 }
 
-                if (c == "\n")
+                if (currentChar == '\n')
                 {
                     newLineCount++;
                 }
 
-                c = _input[parserPos].ToString();
-                parserPos++;
+                currentChar = CurrentInputChar;
+                _parserPos++;
             }
 
+            var currentString = currentChar.ToString();
             var wantedNewline = false;
 
             if (_optPreserveNewlines)
@@ -761,7 +857,7 @@ namespace TsBeautify
             }
 
             var isGenerics = false;
-            if (c == "<")
+            if (currentChar == '<')
             {
                 if (InGenerics)
                 {
@@ -780,7 +876,7 @@ namespace TsBeautify
                             break;
                         }
 
-                        if (!_generics.Contains(cSub))
+                        if (!_genericsChars.ContainsKey(cSub))
                         {
                             break;
                         }
@@ -792,27 +888,28 @@ namespace TsBeautify
                     }
                 }
             }
-            else if (c == ">" && _genericsDepth > 0)
+            else if (currentChar == '>' && _genericsDepth > 0)
             {
                 isGenerics = true;
                 _genericsDepth--;
             }
 
-            if (isGenerics && _genericsBrackets.Contains(c))
+            if (isGenerics && _genericsBracketsChars.ContainsKey(currentChar))
             {
-                return new Token(c, "TK_GENERICS", newLineCount);
+                SetToken(currentString, TokenType.Generics, newLineCount);
+                return;
             }
 
 
-            if (_wordchar.Contains(c))
+            if (_wordcharChars.ContainsKey(currentChar))
             {
-                if (parserPos < _input.Length)
+                if (_parserPos < _input.Length)
                 {
-                    while (_wordchar.Contains(_input[parserPos]))
+                    while (_wordcharChars.ContainsKey(CurrentInputChar))
                     {
-                        c += _input[parserPos];
-                        parserPos++;
-                        if (parserPos == _input.Length)
+                        currentString += CurrentInputChar;
+                        _parserPos++;
+                        if (_parserPos == _input.Length)
                         {
                             break;
                         }
@@ -820,161 +917,182 @@ namespace TsBeautify
                 }
 
 
-                if (parserPos != _input.Length && Regex.IsMatch(c, "^[0-9]+[Ee]$") &&
-                    (_input[parserPos] == '-' || _input[parserPos] == '+'))
+                if ((CurrentInputChar == '-' || CurrentInputChar == '+') &&
+                    _parserPos != _input.Length && Regex.IsMatch(currentString, "^[0-9]+[Ee]$"))
                 {
-                    var sign = _input[parserPos];
-                    parserPos++;
+                    var sign = CurrentInputChar;
+                    _parserPos++;
 
-                    var t = GetNextToken(ref parserPos);
-                    c += sign + t.Value;
-                    return new Token(c, "TK_WORD", newLineCount);
+                    GetNextToken();
+                    currentString += sign + _token.Value;
+                    SetToken(currentString, TokenType.Word, newLineCount);
+                    return;
                 }
 
-                if (c == "in")
+                if (currentString == "in")
                 {
-                    return new Token(c, "TK_OPERATOR", newLineCount);
+                    SetToken(currentString, TokenType.Operator, newLineCount);
+                    return;
                 }
 
-                if (wantedNewline && _lastType != "TK_OPERATOR" && !_ifLineFlag)
+                if (wantedNewline && _lastType != TokenType.Operator && !_ifLineFlag)
                 {
                     PrintNewLine();
                 }
 
-                return new Token(c, "TK_WORD", newLineCount);
+                SetToken(currentString, TokenType.Word, newLineCount);
+                return;
             }
 
-            if (c == "(" || c == "[")
+            if (currentChar == '(' || currentChar == '[')
             {
-                return new Token(c, "TK_START_EXPR", newLineCount);
+                SetToken(currentString, TokenType.StartExpression, newLineCount);
+                return;
             }
 
-            if (c == ")" || c == "]")
+            if (currentChar == ')' || currentChar == ']')
             {
-                return new Token(c, "TK_END_EXPR", newLineCount);
+                SetToken(currentString, TokenType.EndExpression, newLineCount);
+                return;
             }
 
-            if (c == "{")
+            if (currentChar == '{')
             {
                 if (_lastText == "import")
                 {
                     _isImportBlock = true;
-                    return new Token(c, "TK_START_IMPORT", newLineCount);
+                    SetToken(currentString, TokenType.StartImport, newLineCount);
+                    return;
                 }
-                return new Token(c, "TK_START_BLOCK", newLineCount);
+
+                SetToken(currentString, TokenType.StartBlock, newLineCount);
+                return;
             }
 
-            if (c == "}")
+            if (currentChar == '}')
             {
                 if (_isImportBlock)
                 {
                     _isImportBlock = false;
-                    return new Token(c, "TK_END_IMPORT", newLineCount);
+                    SetToken(currentString, TokenType.EndImport, newLineCount);
+                    return;
                 }
-                return new Token(c, "TK_END_BLOCK", newLineCount);
+
+                SetToken(currentString, TokenType.EndBlock, newLineCount);
+                return;
             }
 
-            if (c == ";")
+            if (currentChar == ';')
             {
-                return new Token(c, "TK_SEMICOLON", newLineCount);
+                SetToken(currentString, TokenType.SemiColon, newLineCount);
+                return;
             }
 
-            if (c == "/")
+            if (currentChar == '/')
             {
                 var comment = "";
-                if (_input[parserPos] == '*')
+                if (CurrentInputChar == '*')
                 {
-                    parserPos++;
-                    if (parserPos < _input.Length)
+                    _parserPos++;
+                    if (_parserPos < _input.Length)
                     {
-                        while (!(_input[parserPos] == '*' && _input[parserPos + 1] > '\0' &&
-                                 _input[parserPos + 1] == '/' && parserPos < _input.Length))
+                        while (!(CurrentInputChar == '*' && _input[_parserPos + 1] > '\0' &&
+                                 _input[_parserPos + 1] == '/' && _parserPos < _input.Length))
                         {
-                            comment += _input[parserPos];
-                            parserPos++;
-                            if (parserPos >= _input.Length)
+                            comment += CurrentInputChar;
+                            _parserPos++;
+                            if (_parserPos >= _input.Length)
                             {
                                 break;
                             }
                         }
                     }
 
-                    parserPos += 2;
-                    return new Token("/*" + comment + "*/", "TK_BLOCK_COMMENT", newLineCount);
+                    _parserPos += 2;
+                    SetToken("/*" + comment + "*/", TokenType.BlockComment, newLineCount);
+                    return;
                 }
 
-                if (_input[parserPos] == '/')
+                if (CurrentInputChar == '/')
                 {
-                    comment = c;
-                    while (_input[parserPos] != '\x0d' && _input[parserPos] != '\x0a')
+                    comment = currentString;
+                    while (CurrentInputChar != '\x0d' && CurrentInputChar != '\x0a')
                     {
-                        comment += _input[parserPos];
-                        parserPos++;
-                        if (parserPos >= _input.Length)
+                        comment += CurrentInputChar;
+                        _parserPos++;
+                        if (_parserPos >= _input.Length)
                         {
                             break;
                         }
                     }
 
-                    parserPos++;
+                    _parserPos++;
                     if (wantedNewline)
                     {
                         PrintNewLine();
                     }
 
-                    return new Token(comment, "TK_COMMENT", newLineCount);
+                    SetToken(comment, TokenType.Comment, newLineCount);
+                    return;
                 }
             }
 
-            StringInterpolationKind interpolationAllowed = StringInterpolationKind.None;
+            var interpolationAllowed = StringInterpolationKind.None;
             // Allow C# interpolated strings
-            if (c == "$" || _lastText == "$")
+            if (currentChar == '$' || _lastText == "$")
             {
-                var lookahead = c == "$" ? 1 : 0;
-                var next = At(parserPos + lookahead);
-                if (next == "@" || next == "\"")
+                var lookahead = currentChar == '$' ? 1 : 0;
+                var next = At(_parserPos + lookahead);
+                if (next == '@' || next == '"')
                 {
                     interpolationAllowed = StringInterpolationKind.CSharp;
                     if (lookahead == 1)
                     {
-                        _output.Append(c);
-                        c = _input[parserPos].ToString();
-                        parserPos++;
+                        _output.Append(currentChar);
+                        currentChar = CurrentInputChar;
+                        currentString = currentChar.ToString();
+                        _parserPos++;
                     }
                 }
             }
-            if (c == "@" && _input[parserPos].ToString() == "\"")
+
+            if (currentChar == '@' && CurrentInputChar == '"')
             {
-                _output.Append(c);
-                c = _input[parserPos].ToString();
-                parserPos++;
+                _output.Append(currentChar);
+                currentChar = CurrentInputChar;
+                currentString = currentChar.ToString();
+                _parserPos++;
             }
-            if ((c == "'" || c == "\"" || c == "/" || c == "`")
-                && ((_lastType == "TK_WORD" && (_lastText == "$" || _lastText == "return" || _lastText == "from" || _lastText == "case")) || _lastType == "TK_START_EXPR" ||
-                    _lastType == "TK_START_BLOCK" || _lastType == "TK_END_BLOCK" || _lastType == "TK_OPERATOR" ||
-                    _lastType == "TK_EOF" || _lastType == "TK_SEMICOLON")
+
+            if ((currentChar == '\'' || currentChar == '\\' || currentChar == '/' || currentChar == '`' || currentChar == '"')
+                && (_lastType == TokenType.Word &&
+                    (_lastText == "$" || _lastText == "return" || _lastText == "from" || _lastText == "case") ||
+                    _lastType == TokenType.StartExpression ||
+                    _lastType == TokenType.StartBlock || _lastType == TokenType.EndBlock ||
+                    _lastType == TokenType.Operator ||
+                    _lastType == TokenType.EndOfFile || _lastType == TokenType.SemiColon)
             )
             {
-                var sep = c;
+                var sep = currentChar;
                 var esc = false;
-                var resultingString = c;
+                var resultingString = currentString;
 
-                if (parserPos < _input.Length)
+                if (_parserPos < _input.Length)
                 {
-                    if (sep == "/")
+                    if (sep == '/')
                     {
                         var inCharClass = false;
-                        while (esc || inCharClass || _input[parserPos].ToString() != sep)
+                        while (esc || inCharClass || CurrentInputChar != sep)
                         {
-                            resultingString += _input[parserPos];
+                            resultingString += CurrentInputChar;
                             if (!esc)
                             {
-                                esc = _input[parserPos] == '\\';
-                                if (_input[parserPos] == '[')
+                                esc = CurrentInputChar == '\\';
+                                if (CurrentInputChar == '[')
                                 {
                                     inCharClass = true;
                                 }
-                                else if (_input[parserPos] == ']')
+                                else if (CurrentInputChar == ']')
                                 {
                                     inCharClass = false;
                                 }
@@ -984,35 +1102,38 @@ namespace TsBeautify
                                 esc = false;
                             }
 
-                            parserPos++;
-                            if (parserPos >= _input.Length)
+                            _parserPos++;
+                            if (_parserPos >= _input.Length)
                             {
-                                return new Token(resultingString, "TK_STRING", newLineCount);
+                                SetToken(resultingString, TokenType.String, newLineCount);
+                                return;
                             }
                         }
                     }
                     else
                     {
-                        if (c == "`")
+                        if (currentChar == '`')
                         {
                             interpolationAllowed = StringInterpolationKind.TypeScript;
                         }
-                        while (esc || _input[parserPos].ToString() != sep)
+
+                        while (esc || CurrentInputChar != sep)
                         {
                             var interpolationActioned = false;
                             switch (interpolationAllowed)
                             {
                                 case StringInterpolationKind.CSharp:
-                                    if (_input.StartsWithAt("{", parserPos) && !_input.StartsWithAt("{{", parserPos))
+                                    if (_input.StartsWithAt("{", _parserPos) && !_input.StartsWithAt("{{", _parserPos))
                                     {
                                         interpolationActioned = true;
                                     }
+
                                     break;
                                 case StringInterpolationKind.TypeScript:
-                                    if (_input.StartsWithAt("${", parserPos))
+                                    if (_input.StartsWithAt("${", _parserPos))
                                     {
                                         var escapeCount = 0;
-                                        for (var i = parserPos - 1; i > 0; i--)
+                                        for (var i = _parserPos - 1; i > 0; i--)
                                         {
                                             if (_input[i] == '\\')
                                             {
@@ -1030,6 +1151,7 @@ namespace TsBeautify
                                             interpolationActioned = true;
                                         }
                                     }
+
                                     break;
                             }
 
@@ -1038,151 +1160,192 @@ namespace TsBeautify
                                 switch (interpolationAllowed)
                                 {
                                     case StringInterpolationKind.CSharp:
-                                        {
-                                            var jsSourceText = _input.Substring(parserPos);
-                                            var sub = new TsBeautifierInstance(jsSourceText, _options, true);
-                                            var interpolated = sub.Beautify().TrimStart('{').Trim();
-                                            resultingString += $"{{{interpolated}}}";
-                                            parserPos += sub._parserPos;
-                                        }
+                                    {
+                                        var jsSourceText = _input.Substring(_parserPos);
+                                        var sub = new TsBeautifierInstance(jsSourceText, _options, true);
+                                        var interpolated = sub.Beautify().TrimStart('{').Trim();
+                                        resultingString += $"{{{interpolated}}}";
+                                        _parserPos += sub._parserPos;
+                                    }
                                         break;
                                     case StringInterpolationKind.TypeScript:
-                                        {
-                                            var jsSourceText = _input.Substring(parserPos + 1);
-                                            var sub = new TsBeautifierInstance(jsSourceText, _options, true);
-                                            var interpolated = sub.Beautify().TrimStart('{').Trim();
-                                            resultingString += $"${{{interpolated}}}";
-                                            parserPos += sub._parserPos + 1;
-                                        }
+                                    {
+                                        var jsSourceText = _input.Substring(_parserPos + 1);
+                                        var sub = new TsBeautifierInstance(jsSourceText, _options, true);
+                                        var interpolated = sub.Beautify().TrimStart('{').Trim();
+                                        resultingString += $"${{{interpolated}}}";
+                                        _parserPos += sub._parserPos + 1;
+                                    }
                                         break;
                                 }
                             }
                             else
                             {
-                                resultingString += _input[parserPos];
+                                resultingString += CurrentInputChar;
                                 if (!esc)
                                 {
-                                    esc = _input[parserPos] == '\\';
+                                    esc = CurrentInputChar == '\\';
                                 }
                                 else
                                 {
                                     esc = false;
                                 }
 
-                                parserPos++;
+                                _parserPos++;
                             }
 
-                            if (parserPos >= _input.Length)
+                            if (_parserPos >= _input.Length)
                             {
-                                return new Token(resultingString, "TK_STRING", newLineCount);
+                                SetToken(resultingString, TokenType.String, newLineCount);
+                                return;
                             }
                         }
                     }
                 }
 
-                parserPos += 1;
+                _parserPos += 1;
 
                 resultingString += sep;
 
-                if (sep == "/")
+                if (sep == '/')
                 {
-                    while (parserPos < _input.Length && _wordchar.Contains(_input[parserPos]))
+                    while (_parserPos < _input.Length && _wordcharChars.ContainsKey(CurrentInputChar))
                     {
-                        resultingString += _input[parserPos];
-                        parserPos += 1;
+                        resultingString += CurrentInputChar;
+                        _parserPos += 1;
                     }
                 }
 
-                return new Token(resultingString, "TK_STRING", newLineCount);
+                SetToken(resultingString, TokenType.String, newLineCount);
+                return;
             }
 
-            if (c == "#")
+            if (currentChar == '#')
             {
                 var sharp = "#";
-                if (parserPos < _input.Length && _digits.Contains(_input[parserPos]))
+                if (_parserPos < _input.Length && _digitsChars.ContainsKey(CurrentInputChar))
                 {
                     do
                     {
-                        c = _input[parserPos].ToString();
-                        sharp += c;
-                        parserPos += 1;
-                    } while (parserPos < _input.Length && c != "#" && c != "=");
+                        currentChar = CurrentInputChar;
+                        sharp += currentChar;
+                        _parserPos += 1;
+                    } while (_parserPos < _input.Length && currentChar != '#' && currentChar != '=');
 
-                    if (c == "#")
+                    if (currentChar == '#')
                     {
-                        return new Token(sharp, "TK_WORD", newLineCount);
+                        SetToken(sharp, TokenType.Word, newLineCount);
+                        return;
                     }
 
-                    return new Token(sharp, "TK_OPERATOR", newLineCount);
+                    SetToken(sharp, TokenType.Operator, newLineCount);
+                    return;
                 }
             }
 
 
-            if (c == "<" && _input.Substring(parserPos - 1, 3) == "<!--")
+            if (currentChar == '<' && _input.Substring(_parserPos - 1, 3) == "<!--")
             {
-                parserPos += 3;
-                return new Token("<!--", "TK_COMMENT", newLineCount);
+                _parserPos += 3;
+                SetToken("<!--", TokenType.Comment, newLineCount);
+                return;
             }
 
-            if (c == "-" && _input.Substring(parserPos - 1, 2) == "-->")
+            if (currentChar == '-' && _input.Substring(_parserPos - 1, 2) == "-->")
             {
-                parserPos += 2;
+                _parserPos += 2;
                 if (wantedNewline)
                 {
                     PrintNewLine();
                 }
 
-                return new Token("-->", "TK_COMMENT", newLineCount);
+                SetToken("-->", TokenType.Comment, newLineCount);
+                return;
             }
 
-            if (_punct.Contains(c))
+            if (_punctuation.ContainsKey(currentString))
             {
-                while (parserPos < _input.Length && _punct.Contains(c + _input[parserPos]))
+                while (_parserPos < _input.Length && _punctuation.ContainsKey(currentString + CurrentInputChar))
                 {
-                    c += _input[parserPos];
-                    parserPos += 1;
-                    if (parserPos >= _input.Length)
+                    currentString += CurrentInputChar;
+                    _parserPos += 1;
+                    if (_parserPos >= _input.Length)
                     {
                         break;
                     }
                 }
 
-                return new Token(c, "TK_OPERATOR", newLineCount);
+                SetToken(currentString, TokenType.Operator, newLineCount);
+                return;
             }
 
-            return new Token(c, "TK_UNKNOWN", newLineCount);
+            SetToken(currentString, TokenType.Unknown, newLineCount);
         }
 
-        private string At(int position)
+        private void SetToken(string token, TokenType tokenType, int newLineCount)
+        {
+            _token.NewLineCount = newLineCount;
+            _token.Value = token;
+            _token.TokenType = tokenType;
+        }
+
+        private char? At(int position)
         {
             if (position > _input.Length - 1)
             {
                 return null;
             }
 
-            return _input[position].ToString();
+            return _input[position];
         }
 
         public string Beautify()
         {
+            Parse();
             return _output.ToString();
         }
-
-        enum StringInterpolationKind
-        {
-            None = 1,
-            CSharp = 2,
-            TypeScript = 3
-        };
     }
 
-    internal class Token
+    internal enum StringInterpolationKind
+    {
+        None = 1,
+        CSharp = 2,
+        TypeScript = 3
+    }
+
+    internal enum TsMode
+    {
+        Block,
+        Expression,
+        DoBlock
+    }
+
+    internal enum TokenType
+    {
+        Comment,
+        Operator,
+        Unknown,
+        EndBlock,
+        EndOfFile,
+        StartExpression,
+        StartBlock,
+        EndExpression,
+        Word,
+        StartImport,
+        EndImport,
+        SemiColon,
+        String,
+        Generics,
+        BlockComment
+    }
+
+    internal struct Token
     {
         public string Value { get; set; }
-        public string TokenType { get; set; }
+        public TokenType TokenType { get; set; }
         public int NewLineCount { get; set; }
 
-        public Token(string token, string tokenType, int newLineCount = 0)
+        public Token(string token, TokenType tokenType, int newLineCount = 0)
         {
             Value = token;
             TokenType = tokenType;
