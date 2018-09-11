@@ -1064,6 +1064,10 @@ namespace TsBeautify
                 _parserPos++;
             }
 
+            if (currentChar == '`')
+            {
+                int a = 0;
+            }
             if ((currentChar == '\'' || currentChar == '\\' || currentChar == '/' || currentChar == '`' || currentChar == '"')
                 && (_lastType == TokenType.Word &&
                     (_lastText == "$" || _lastText == "return" || _lastText == "from" || _lastText == "case") ||
@@ -1075,7 +1079,7 @@ namespace TsBeautify
             {
                 var sep = currentChar;
                 var esc = false;
-                var resultingString = currentString;
+                var resultingString = new StringBuilder(currentString);
 
                 if (_parserPos < _input.Length)
                 {
@@ -1084,7 +1088,7 @@ namespace TsBeautify
                         var inCharClass = false;
                         while (esc || inCharClass || CurrentInputChar != sep)
                         {
-                            resultingString += CurrentInputChar;
+                            resultingString.Append(CurrentInputChar);
                             if (!esc)
                             {
                                 esc = CurrentInputChar == '\\';
@@ -1105,7 +1109,7 @@ namespace TsBeautify
                             _parserPos++;
                             if (_parserPos >= _input.Length)
                             {
-                                SetToken(resultingString, TokenType.String, newLineCount);
+                                SetToken(resultingString.ToString(), TokenType.String, newLineCount);
                                 return;
                             }
                         }
@@ -1164,7 +1168,7 @@ namespace TsBeautify
                                         var jsSourceText = _input.Substring(_parserPos);
                                         var sub = new TsBeautifierInstance(jsSourceText, _options, true);
                                         var interpolated = sub.Beautify().TrimStart('{').Trim();
-                                        resultingString += $"{{{interpolated}}}";
+                                        resultingString.Append($"{{{interpolated}}}");
                                         _parserPos += sub._parserPos;
                                     }
                                         break;
@@ -1173,7 +1177,7 @@ namespace TsBeautify
                                         var jsSourceText = _input.Substring(_parserPos + 1);
                                         var sub = new TsBeautifierInstance(jsSourceText, _options, true);
                                         var interpolated = sub.Beautify().TrimStart('{').Trim();
-                                        resultingString += $"${{{interpolated}}}";
+                                        resultingString.Append($"${{{interpolated}}}");
                                         _parserPos += sub._parserPos + 1;
                                     }
                                         break;
@@ -1181,7 +1185,7 @@ namespace TsBeautify
                             }
                             else
                             {
-                                resultingString += CurrentInputChar;
+                                resultingString.Append(CurrentInputChar);
                                 if (!esc)
                                 {
                                     esc = CurrentInputChar == '\\';
@@ -1196,7 +1200,7 @@ namespace TsBeautify
 
                             if (_parserPos >= _input.Length)
                             {
-                                SetToken(resultingString, TokenType.String, newLineCount);
+                                SetToken(resultingString.ToString(), TokenType.String, newLineCount);
                                 return;
                             }
                         }
@@ -1205,18 +1209,18 @@ namespace TsBeautify
 
                 _parserPos += 1;
 
-                resultingString += sep;
+                resultingString.Append(sep);
 
                 if (sep == '/')
                 {
                     while (_parserPos < _input.Length && _wordcharChars.ContainsKey(CurrentInputChar))
                     {
-                        resultingString += CurrentInputChar;
+                        resultingString.Append(CurrentInputChar);
                         _parserPos += 1;
                     }
                 }
 
-                SetToken(resultingString, TokenType.String, newLineCount);
+                SetToken(resultingString.ToString(), TokenType.String, newLineCount);
                 return;
             }
 

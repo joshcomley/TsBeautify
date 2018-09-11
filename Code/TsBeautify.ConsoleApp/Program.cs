@@ -2,7 +2,11 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using ShellProgressBar;
 using TsBeautify.Data;
 
 namespace TsBeautify.ConsoleApp
@@ -13,19 +17,48 @@ namespace TsBeautify.ConsoleApp
         {
             Console.WriteLine("Preparing");
             var timer = new Stopwatch();
-            Console.WriteLine("Starting");
-            timer.Start();
             var files = Directory.EnumerateFiles(@"D:\Code\Brandless\Iql.Npm.Unformatted", "*.ts",
-                SearchOption.AllDirectories);
-            foreach (var file in files)
+                SearchOption.AllDirectories)
+                .Select(f => new { File = f, Contents = File.ReadAllText(f) }).ToList();
+
+            var options = new ProgressBarOptions
             {
-                var beautifier = new TsBeautifier();
-                var text = File.ReadAllText(file);
-                var result = beautifier.Beautify(text);
+                ProgressCharacter = '─',
+                ProgressBarOnBottom = false
+            };
+            //foreach (var text in texts)
+            //{
+            //    var beautifier = new TsBeautifier();
+            //    var result = beautifier.Beautify(text);
+            //}
+            using (var pbar = new ProgressBar(files.Count, "Starting parallel", options))
+            {
+                object lastFile = null;
+                timer.Start();
+                //foreach (var file in files)
+                //{
+                //    pbar.Tick(Path.GetFileName(file.File));
+                //    if (Path.GetFileName(file.File) == "MetadataSerializationJsonCache.ts")
+                //    {
+                //        continue;
+                //    }
+                //    var beautifier = new TsBeautifier();
+                //    var result = beautifier.Beautify(file.Contents);
+                //}
+                Parallel.ForEach(files, file =>
+                {
+                    lastFile = file;
+                    pbar.Tick(Path.GetFileName(file.File));
+                    var beautifier = new TsBeautifier();
+                    var result = beautifier.Beautify(file.Contents);
+                });
             }
+            //var text = File.ReadAllText(
+            //    @"D:\Code\Brandless\Iql.Npm.Unformatted\Iql.Tests\src\Tests\MetadataSerialization\MetadataSerializationJsonCache.ts");
+            //var beautifier = new TsBeautifier();
+            //var result = beautifier.Beautify(text);
             timer.Stop();
             Console.WriteLine($"Completed in {FormatTime(timer.ElapsedTicks)}");
-            //Iterate(timer);
         }
 
         private static void Iterate(Stopwatch timer)

@@ -212,6 +212,14 @@ let y = 7;";
         }
 
         [TestMethod]
+        public void TestHugeStringConversion()
+        {
+            var typescript = HugeString.TypeScript;
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+        }
+
+        [TestMethod]
         public void TestKeyWordInLiteral()
         {
             var typescript = @"        switch (type) {
