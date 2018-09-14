@@ -8,6 +8,7 @@ namespace TsBeautify
         public TsBeautifier(TsBeautifyOptions options = null)
         {
             Options = options ?? new TsBeautifyOptions();
+            var i = new DummyClass();
         }
 
         public TsBeautifier Configure(Action<TsBeautifyOptions> configure)
