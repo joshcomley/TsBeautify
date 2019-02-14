@@ -8,6 +8,19 @@ namespace TsBeautify.Tests
     public class BeautifierTests
     {
         [TestMethod]
+        public void TestCastAfterCurlyBrace()
+        {
+            var result = Beautify(@"
+            if (true) {}<void>(c => {
+                return c;
+            })(this);");
+            Assert.AreEqual(@"if (true) {}
+<void>(c => {
+    return c;
+})(this);", result);
+        }
+
+        [TestMethod]
         public void TestCSharpCoalesceOperator()
         {
             var result = Beautify(@"var callbackMatch = abc ?? def;");

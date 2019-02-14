@@ -458,6 +458,10 @@ namespace TsBeautify
                         {
                             if (genericsDepth == 0)
                             {
+                                if (_lastText == "}")
+                                {
+                                    PrintNewLine();
+                                }
                                 if (_lastType == TokenType.Word &&
                                     _lastText == "return")
                                 {
