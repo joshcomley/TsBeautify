@@ -21,6 +21,15 @@ namespace TsBeautify.Tests
         }
 
         [TestMethod]
+        public void TestBug1()
+        {
+            var jsBeautifyOptions = new TsBeautifyOptions();
+            jsBeautifyOptions.PreserveNewlines = false;
+            var typescript = Bug1.TypeScript;
+            typescript = new TsBeautifier(jsBeautifyOptions).Beautify(typescript);
+        }
+
+        [TestMethod]
         public void TestCSharpCoalesceOperator()
         {
             var result = Beautify(@"var callbackMatch = abc ?? def;");
@@ -205,12 +214,77 @@ let y = 7;";
         }
 
         [TestMethod]
-        public void TestLargeFile()
+        public void TestTest()
         {
-            var typescript = LargeFile.Inputxx;
+            var code =
+                @"@test public async""Test1"" () {
+}@test public async""Test2"" () {
+}";
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(code);
+            Assert.AreEqual(@"@test public async ""Test1"" () {}
+@test public async ""Test2"" () {}", result);
+        }
+
+        [TestMethod]
+        public void TestLargeFile1()
+        {
+            var typescript = LargeFile.Input1;
             var beautifier = new TsBeautifier();
             var result = beautifier.Beautify(typescript);
-            Assert.AreEqual(LargeFile.Beautified, result);
+            Assert.AreEqual(LargeFile.Input1Beautified, result);
+        }
+
+        [TestMethod]
+        public void TestLargeFile2()
+        {
+            var typescript = LargeFile.Input2;
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+            Assert.AreEqual(LargeFile.Input2Beautified, result);
+        }
+
+        [TestMethod]
+        public void Test456()
+        {
+            var typescript =
+                @"let set = (<ITrackingSet><any>MethodInfoExtensions.InvokeGeneric(Enumerable.First(TypeInfo.GetRuntimeMethods(TrackingSetCollection )
+
+, m => m.Name == <any>`TrackingSet`)
+
+, this, new Array<Object>(), type));";
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+            Assert.AreEqual(@"let set = (<ITrackingSet><any>MethodInfoExtensions.InvokeGeneric(Enumerable.First(TypeInfo.GetRuntimeMethods(TrackingSetCollection), m => m.Name == <any>`TrackingSet`), this, new Array<Object>(), type));", result);
+        }
+
+        [TestMethod]
+        public void TestImportModule()
+        {
+            var typescript = @"import ""module-alias/register"";
+import { suite, test, slow, timeout } from ""mocha-typescript"";
+import { assert } from ""chai"";import { __Iql_Tests_Types_typeLoaded, __Iql_Tests_Types_defer } from ""../../Iql.Tests.Types.Defer"";
+import { TestsBase } from ""../TestsBase"";
+";
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+            Assert.AreEqual(@"import ""module-alias/register"";
+import { suite, test, slow, timeout } from ""mocha-typescript"";
+import { assert } from ""chai"";
+import { __Iql_Tests_Types_typeLoaded, __Iql_Tests_Types_defer } from ""../../Iql.Tests.Types.Defer"";
+import { TestsBase } from ""../TestsBase"";", result);
+        }
+
+        [TestMethod]
+        public void Test123()
+        {
+            var typescript =
+                @"r=//
+`^$`;";
+            var beautifier = new TsBeautifier();
+            var result = beautifier.Beautify(typescript);
+            Assert.AreEqual(@"r = //
+`^$`;", result);
         }
 
         [TestMethod]

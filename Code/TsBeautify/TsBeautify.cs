@@ -191,6 +191,10 @@ namespace TsBeautify
                 GetNextToken();
                 _tokenText = _token.Value;
                 var tokenType = _token.TokenType;
+                if (tokenType == TokenType.Word && _lineStarters.ContainsKey(_token.Value))
+                {
+                    PrintNewLine();
+                }
                 if (tokenType == TokenType.EndBlock && interpolation && _indentLevel == 1)
                 {
                     return;
@@ -330,7 +334,7 @@ namespace TsBeautify
 
                         if (_lastType == TokenType.EndBlock)
                         {
-                            if (!new[] {"else", "catch", "finally"}.Contains(_tokenText.ToLower()))
+                            if (!new[] { "else", "catch", "finally" }.Contains(_tokenText.ToLower()))
                             {
                                 prefix = "NEWLINE";
                             }
@@ -368,7 +372,7 @@ namespace TsBeautify
                         }
 
                         if (_lastType != TokenType.EndBlock &&
-                            new[] {"else", "catch", "finally"}.Contains(_tokenText.ToLower()))
+                            new[] { "else", "catch", "finally" }.Contains(_tokenText.ToLower()))
                         {
                             PrintNewLine();
                         }
@@ -814,37 +818,52 @@ namespace TsBeautify
             return false;
         }
 
-        private void GetNextToken()
+        private bool SkipWhiteSpace(out char retrievedChar, out int newLineCount)
         {
-            var newLineCount = 0;
-
+            retrievedChar = CurrentInputChar;
+            newLineCount = 0;
             if (_parserPos >= _input.Length)
             {
                 SetToken("", TokenType.EndOfFile, newLineCount);
-                return;
+                return true;
             }
-
-            var currentChar = CurrentInputChar;
-            _parserPos++;
-
-            while (_whitespaceChars.ContainsKey(currentChar))
+            while (_whitespaceChars.ContainsKey(retrievedChar))
             {
                 if (_parserPos >= _input.Length)
                 {
                     SetToken("", TokenType.EndOfFile, newLineCount);
-                    return;
+                    return true;
                 }
 
-                if (currentChar == '\n')
+                if (retrievedChar == '\n')
                 {
                     newLineCount++;
                 }
 
-                currentChar = CurrentInputChar;
+                retrievedChar = CurrentInputChar;
                 _parserPos++;
             }
 
-            var currentString = currentChar.ToString();
+            return false;
+        }
+
+        private void GetNextToken()
+        {
+            if (SkipWhiteSpace2(true, out var newLineCount, out var retrievedChar))
+            {
+                return;
+            }
+            //_parserPos++;
+            //if (SkipWhiteSpace(out var retrievedChar, out var newLineCount))
+            //{
+            //    return;
+            //}
+            var currentString = retrievedChar.ToString();
+            if (retrievedChar == '@')
+            {
+                SkipWhiteSpace2(false, out var newLineCount2, out var nextNonWhiteSpaceChar);
+                newLineCount += newLineCount2;
+            }
             var wantedNewline = false;
 
             if (_optPreserveNewlines)
@@ -861,7 +880,7 @@ namespace TsBeautify
             }
 
             var isGenerics = false;
-            if (currentChar == '<')
+            if (retrievedChar == '<')
             {
                 if (InGenerics)
                 {
@@ -892,20 +911,19 @@ namespace TsBeautify
                     }
                 }
             }
-            else if (currentChar == '>' && _genericsDepth > 0)
+            else if (retrievedChar == '>' && _genericsDepth > 0)
             {
                 isGenerics = true;
                 _genericsDepth--;
             }
 
-            if (isGenerics && _genericsBracketsChars.ContainsKey(currentChar))
+            if (isGenerics && _genericsBracketsChars.ContainsKey(retrievedChar))
             {
                 SetToken(currentString, TokenType.Generics, newLineCount);
                 return;
             }
 
-
-            if (_wordcharChars.ContainsKey(currentChar))
+            if (_wordcharChars.ContainsKey(retrievedChar) || (retrievedChar == '@') && _wordcharChars.ContainsKey(CurrentInputChar))
             {
                 if (_parserPos < _input.Length)
                 {
@@ -948,19 +966,19 @@ namespace TsBeautify
                 return;
             }
 
-            if (currentChar == '(' || currentChar == '[')
+            if (retrievedChar == '(' || retrievedChar == '[')
             {
                 SetToken(currentString, TokenType.StartExpression, newLineCount);
                 return;
             }
 
-            if (currentChar == ')' || currentChar == ']')
+            if (retrievedChar == ')' || retrievedChar == ']')
             {
                 SetToken(currentString, TokenType.EndExpression, newLineCount);
                 return;
             }
 
-            if (currentChar == '{')
+            if (retrievedChar == '{')
             {
                 if (_lastText == "import")
                 {
@@ -973,7 +991,7 @@ namespace TsBeautify
                 return;
             }
 
-            if (currentChar == '}')
+            if (retrievedChar == '}')
             {
                 if (_isImportBlock)
                 {
@@ -986,13 +1004,13 @@ namespace TsBeautify
                 return;
             }
 
-            if (currentChar == ';')
+            if (retrievedChar == ';')
             {
                 SetToken(currentString, TokenType.SemiColon, newLineCount);
                 return;
             }
 
-            if (currentChar == '/')
+            if (retrievedChar == '/')
             {
                 var comment = "";
                 if (CurrentInputChar == '*')
@@ -1043,45 +1061,52 @@ namespace TsBeautify
 
             var interpolationAllowed = StringInterpolationKind.None;
             // Allow C# interpolated strings
-            if (currentChar == '$' || _lastText == "$")
+            if (retrievedChar == '$' || _lastText == "$")
             {
-                var lookahead = currentChar == '$' ? 1 : 0;
+                var lookahead = retrievedChar == '$' ? 1 : 0;
                 var next = At(_parserPos + lookahead);
                 if (next == '@' || next == '"')
                 {
                     interpolationAllowed = StringInterpolationKind.CSharp;
                     if (lookahead == 1)
                     {
-                        _output.Append(currentChar);
-                        currentChar = CurrentInputChar;
-                        currentString = currentChar.ToString();
+                        _output.Append(retrievedChar);
+                        retrievedChar = CurrentInputChar;
+                        currentString = retrievedChar.ToString();
                         _parserPos++;
                     }
                 }
             }
 
-            if (currentChar == '@' && CurrentInputChar == '"')
+            if (retrievedChar == '@' && CurrentInputChar == '"')
             {
-                _output.Append(currentChar);
-                currentChar = CurrentInputChar;
-                currentString = currentChar.ToString();
+                _output.Append(retrievedChar);
+                retrievedChar = CurrentInputChar;
+                currentString = retrievedChar.ToString();
                 _parserPos++;
             }
 
-            if (currentChar == '`')
+            if (retrievedChar == '`')
             {
                 int a = 0;
             }
-            if ((currentChar == '\'' || currentChar == '\\' || currentChar == '/' || currentChar == '`' || currentChar == '"')
+            var isQuote = retrievedChar == '\'' || retrievedChar == '\\' || retrievedChar == '`' || retrievedChar == '"';
+            if ((isQuote || retrievedChar == '/')
                 && (_lastType == TokenType.Word &&
                     (_lastText == "$" || _lastText == "return" || _lastText == "from" || _lastText == "case") ||
+                    (isQuote && _lastType == TokenType.Word) ||
                     _lastType == TokenType.StartExpression ||
-                    _lastType == TokenType.StartBlock || _lastType == TokenType.EndBlock ||
+                    _lastType == TokenType.BlockComment ||
+                    _lastType == TokenType.Comment ||
+                    _lastType == TokenType.StartBlock ||
+                    _lastType == TokenType.EndBlock ||
                     _lastType == TokenType.Operator ||
-                    _lastType == TokenType.EndOfFile || _lastType == TokenType.SemiColon)
+                    _lastType == TokenType.Generics ||
+                    _lastType == TokenType.EndOfFile ||
+                    _lastType == TokenType.SemiColon)
             )
             {
-                var sep = currentChar;
+                var sep = retrievedChar;
                 var esc = false;
                 var resultingString = new StringBuilder(currentString);
 
@@ -1120,7 +1145,7 @@ namespace TsBeautify
                     }
                     else
                     {
-                        if (currentChar == '`')
+                        if (retrievedChar == '`')
                         {
                             interpolationAllowed = StringInterpolationKind.TypeScript;
                         }
@@ -1168,22 +1193,22 @@ namespace TsBeautify
                                 switch (interpolationAllowed)
                                 {
                                     case StringInterpolationKind.CSharp:
-                                    {
-                                        var jsSourceText = _input.Substring(_parserPos);
-                                        var sub = new TsBeautifierInstance(jsSourceText, _options, true);
-                                        var interpolated = sub.Beautify().TrimStart('{').Trim();
-                                        resultingString.Append($"{{{interpolated}}}");
-                                        _parserPos += sub._parserPos;
-                                    }
+                                        {
+                                            var jsSourceText = _input.Substring(_parserPos);
+                                            var sub = new TsBeautifierInstance(jsSourceText, _options, true);
+                                            var interpolated = sub.Beautify().TrimStart('{').Trim();
+                                            resultingString.Append($"{{{interpolated}}}");
+                                            _parserPos += sub._parserPos;
+                                        }
                                         break;
                                     case StringInterpolationKind.TypeScript:
-                                    {
-                                        var jsSourceText = _input.Substring(_parserPos + 1);
-                                        var sub = new TsBeautifierInstance(jsSourceText, _options, true);
-                                        var interpolated = sub.Beautify().TrimStart('{').Trim();
-                                        resultingString.Append($"${{{interpolated}}}");
-                                        _parserPos += sub._parserPos + 1;
-                                    }
+                                        {
+                                            var jsSourceText = _input.Substring(_parserPos + 1);
+                                            var sub = new TsBeautifierInstance(jsSourceText, _options, true);
+                                            var interpolated = sub.Beautify().TrimStart('{').Trim();
+                                            resultingString.Append($"${{{interpolated}}}");
+                                            _parserPos += sub._parserPos + 1;
+                                        }
                                         break;
                                 }
                             }
@@ -1228,19 +1253,19 @@ namespace TsBeautify
                 return;
             }
 
-            if (currentChar == '#')
+            if (retrievedChar == '#')
             {
                 var sharp = "#";
                 if (_parserPos < _input.Length && _digitsChars.ContainsKey(CurrentInputChar))
                 {
                     do
                     {
-                        currentChar = CurrentInputChar;
-                        sharp += currentChar;
+                        retrievedChar = CurrentInputChar;
+                        sharp += retrievedChar;
                         _parserPos += 1;
-                    } while (_parserPos < _input.Length && currentChar != '#' && currentChar != '=');
+                    } while (_parserPos < _input.Length && retrievedChar != '#' && retrievedChar != '=');
 
-                    if (currentChar == '#')
+                    if (retrievedChar == '#')
                     {
                         SetToken(sharp, TokenType.Word, newLineCount);
                         return;
@@ -1252,14 +1277,14 @@ namespace TsBeautify
             }
 
 
-            if (currentChar == '<' && _input.Substring(_parserPos - 1, 3) == "<!--")
+            if (retrievedChar == '<' && _input.Substring(_parserPos - 1, 3) == "<!--")
             {
                 _parserPos += 3;
                 SetToken("<!--", TokenType.Comment, newLineCount);
                 return;
             }
 
-            if (currentChar == '-' && _input.Substring(_parserPos - 1, 2) == "-->")
+            if (retrievedChar == '-' && _input.Substring(_parserPos - 1, 2) == "-->")
             {
                 _parserPos += 2;
                 if (wantedNewline)
@@ -1288,6 +1313,43 @@ namespace TsBeautify
             }
 
             SetToken(currentString, TokenType.Unknown, newLineCount);
+        }
+
+        private bool SkipWhiteSpace2(bool skipFirst, out int newLineCount, out char retrievedChar)
+        {
+            newLineCount = 0;
+
+            if (_parserPos >= _input.Length)
+            {
+                SetToken("", TokenType.EndOfFile, newLineCount);
+                retrievedChar = '\n';
+                return true;
+            }
+
+            retrievedChar = CurrentInputChar;
+
+            if (skipFirst)
+            {
+                _parserPos++;
+            }
+            while (_whitespaceChars.ContainsKey(retrievedChar))
+            {
+                if (_parserPos >= _input.Length)
+                {
+                    SetToken("", TokenType.EndOfFile, newLineCount);
+                    return true;
+                }
+
+                if (retrievedChar == '\n')
+                {
+                    newLineCount++;
+                }
+
+                retrievedChar = CurrentInputChar;
+                _parserPos++;
+            }
+
+            return false;
         }
 
         private void SetToken(string token, TokenType tokenType, int newLineCount)
