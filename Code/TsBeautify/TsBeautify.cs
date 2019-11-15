@@ -1086,10 +1086,6 @@ namespace TsBeautify
                 _parserPos++;
             }
 
-            if (retrievedChar == '`')
-            {
-                int a = 0;
-            }
             var isQuote = retrievedChar == '\'' || retrievedChar == '\\' || retrievedChar == '`' || retrievedChar == '"';
             if ((isQuote || retrievedChar == '/')
                 && (_lastType == TokenType.Word &&
@@ -1409,7 +1405,7 @@ namespace TsBeautify
         BlockComment
     }
 
-    internal struct Token
+    internal class Token
     {
         public string Value { get; set; }
         public TokenType TokenType { get; set; }
