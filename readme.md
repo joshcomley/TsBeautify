@@ -10,9 +10,9 @@ For usage within .NET:
 
 For usage within a web application:
 
-    npm i tsbeautify
+    npm i @brandless/tsbeautify --save
     // OR
-    yarn install tsbeautify
+    yarn add @brandless/tsbeautify
 
 ## Usage
 
