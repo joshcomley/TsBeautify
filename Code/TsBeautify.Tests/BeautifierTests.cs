@@ -8,6 +8,13 @@ namespace TsBeautify.Tests
     public class BeautifierTests
     {
         [TestMethod]
+        public void ReturnShouldNeverBeFollowedByANewLine()
+        {
+            var result = Beautify(@"return function(){}");
+            Assert.AreEqual(@"return function () {}", result);
+        }
+
+        [TestMethod]
         public void TestCastAfterCurlyBrace()
         {
             var result = Beautify(@"

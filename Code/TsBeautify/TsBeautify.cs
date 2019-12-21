@@ -700,6 +700,10 @@ namespace TsBeautify
 
         private void PrintNewLine(bool? ignoreRepeated = null)
         {
+            if (_lastText == "return" || _lastText == "!")
+            {
+                return;
+            }
             ignoreRepeated = ignoreRepeated ?? true;
 
             _ifLineFlag = false;
