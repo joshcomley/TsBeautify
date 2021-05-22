@@ -24,7 +24,7 @@ namespace TsBeautify
                 var parser = new TsBeautifierInstance(typescript, Options);
                 return parser.Beautify();
             }
-            catch
+            catch(Exception e)
             {
                 return typescript;
             }

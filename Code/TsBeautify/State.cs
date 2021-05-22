@@ -5,8 +5,16 @@ namespace TsBeautify
 {
     internal class State
     {
+        public string LastWord { get; set; }
+        public int GenericsDepthInternal { get; set; }
+        public bool VarLine { get; set; }
+        public bool VarLineTainted { get; set; }
+        public bool InCase { get; set; }
+        public StringBuilder WordOutput { get; set; }
         public StringBuilder Output { get; set; }
         public string LastText { get; set; }
+        public List<string> Items { get; set; } = new List<string>();
+        public TokenType CurrentType { get; set; }
         public TokenType LastType { get; set; }
         public Token Token { get; set; }
         public string TokenText { get; set; }
@@ -20,7 +28,7 @@ namespace TsBeautify
         public int CurrentInputCharIndex { get; set; } = -1;
         public int ParserPos { get; set; }
         public int IndentLevel { get; set; }
-        public Stack<TsMode> Modes { get; } = new Stack<TsMode>();
+        public Stack<TsMode> Modes { get; set; } = new Stack<TsMode>();
         public StaticState StaticState { get; set; }
         private char _currentInputChar; 
         public char CurrentInputChar
@@ -44,6 +52,7 @@ namespace TsBeautify
             StaticState = staticState;
             Modes.Push(CurrentMode);
             Output = new StringBuilder();
+            WordOutput = new StringBuilder();
             Token = new Token(null, TokenType.BlockComment);
             LastType = TokenType.StartExpression; // last token type
             LastText = ""; // last token text
@@ -59,6 +68,10 @@ namespace TsBeautify
         {
             return new State(StaticState)
             {
+                VarLine = VarLine,
+                VarLineTainted = VarLineTainted,
+                InCase = InCase,
+                LastWord = LastWord,
                 LastText = LastText,
                 LastType = LastType,
                 Token = Token,
@@ -74,7 +87,8 @@ namespace TsBeautify
                 ParserPos = ParserPos,
                 StaticState = StaticState,
                 IndentLevel= IndentLevel,
-                Output = new StringBuilder(Output.ToString())
+                Modes = new Stack<TsMode>(Modes),
+                Output = new StringBuilder(Output.ToString()),
             };
         }
     }

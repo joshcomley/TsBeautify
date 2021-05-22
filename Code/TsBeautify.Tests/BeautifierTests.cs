@@ -93,7 +93,7 @@ namespace TsBeautify.Tests
             Assert.AreEqual(
                 @"class MyClass<T> extends MyOtherClass
 {
-    SomeMethod() : string
+    SomeMethod(): string
     {
         let x = <string><any>"""";
         return <string><any>"""";
@@ -169,9 +169,15 @@ dbList.PagingInfo = new PagingInfo(skippedSoFar, totalCount, pageSize, page, pag
         {
             var typescript = @"let x = `${myVar}`;
 let y = 7;";
-            //typescript = "let x = `a`;";
-            var beautifier = new TsBeautifier();
-            var result = beautifier.Beautify(typescript);
+            var result = Beautify(typescript);
+            Assert.AreEqual(typescript, result);
+        }
+
+        [TestMethod]
+        public void TestStringInterpolation2()
+        {
+            var typescript = @"x = `${y}`;";
+            var result = Beautify(typescript);
             Assert.AreEqual(typescript, result);
         }
 

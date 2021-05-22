@@ -5,10 +5,16 @@ namespace TsBeautify.Tests
     [TestClass]
     public class MethodReturnTypeTest : TestBase
     {
-        // [TestMethod]
-        // public void TestMethodReturnType()
-        // {
-        //     Assert.AreEqual(@"x():void{}", Beautify(@"x()  : void {}"));
-        // }
+        [TestMethod]
+        public void TestMethodReturnType()
+        {
+            Assert.AreEqual(@"x(): y {}", Beautify(@"x()  : y {}"));
+        }
+        
+        [TestMethod]
+        public void TestMethodComplexReturnType()
+        {
+            Assert.AreEqual(@"x(): X<Y<Z>> {}", Beautify(@"x()  : X<Y<Z>> {}"));
+        }
     }
 }

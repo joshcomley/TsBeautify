@@ -14,7 +14,7 @@ const x = obj?.Name;
 }
  }");
             Assert.AreEqual(@"export class MyClass {
-    public doSomething(obj: SomeObj) : void {
+    public doSomething(obj: SomeObj): void {
         const x = obj?.Name;
     }
 }", result);

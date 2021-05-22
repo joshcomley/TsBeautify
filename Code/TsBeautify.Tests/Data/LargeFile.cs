@@ -949,7 +949,7 @@ import { TestCurrentLocationResolver } from ""../Services/TestCurrentLocationRes
 import { IqlCurrentUserService, IqlCurrentLocationService } from ""@brandless/iql.entities"";
 /*[TestClass]*/
 @suite export class PropertyTests extends TestsBase {
-    public static FunctionsDeclared() : Array<string> {
+    public static FunctionsDeclared(): Array<string> {
         return new Array<string>(`InferredWithConversionToStringTest`, `PopulateNewExistingInferredWithValueTest`, `PopulateNewEntityInferredWithValueTest`, `TestPropertyResolveFriendlyName`, `TestPropertyNullability`, `TestPropertyIqlTypeString`, `TestPropertyIqlTypeDate`, `TestPropertyIqlTypeInteger`, `TestPropertyIqlTypeDecimalFromDecimal`, `TestPropertyIqlTypeDecimalFromFloat`, `TestPropertyIqlTypeDecimalFromDouble`, `TestPropertyIqlTypeBoolean`);
     }
     public static ClassName: string = `PropertyTests`;
@@ -1144,7 +1144,7 @@ import { IqlCurrentUserService, IqlCurrentLocationService } from ""@brandless/iq
     @test public ""Test Property Iql Type Boolean"" () {
         assert.equal(PropertyTests.Db.EntityConfigurationContext.EntityType<ApplicationUser>(ApplicationUser).FindPropertyByExpression<boolean>(p => p.EmailConfirmed, Boolean).TypeDefinition.Kind, IqlType.Boolean);
     }
-    toJSON() : any {
+    toJSON(): any {
         return Serialization.PrepareForJson(this, PropertyTests);
     }
 }

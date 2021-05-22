@@ -74,7 +74,7 @@ namespace TsBeautify
             //{
             //    return;
             //}
-            var currentString = retrievedChar.ToString();
+            var currentString = retrievedChar == 0 ? "" : retrievedChar.ToString();
             if (retrievedChar == '@')
             {
                 SkipWhiteSpace2(false, out var newLineCount2, out var nextNonWhiteSpaceChar);
@@ -290,7 +290,7 @@ namespace TsBeautify
                     interpolationAllowed = StringInterpolationKind.CSharp;
                     if (lookahead == 1)
                     {
-                        _state.Output.Append(retrievedChar);
+                        Print(retrievedChar);
                         retrievedChar = _state.CurrentInputChar;
                         currentString = retrievedChar.ToString();
                         _state.ParserPos++;
@@ -300,7 +300,7 @@ namespace TsBeautify
 
             if (retrievedChar == '@' && _state.CurrentInputChar == '"')
             {
-                _state.Output.Append(retrievedChar);
+                Print(retrievedChar);
                 retrievedChar = _state.CurrentInputChar;
                 currentString = retrievedChar.ToString();
                 _state.ParserPos++;
@@ -601,516 +601,537 @@ namespace TsBeautify
 
         public void Parse()
         {
-            var lastWord = "";
-            var varLine = false;
-            var varLineTainted = false;
-            var inCase = false;
-            var genericsDepth = 0;
-            var interpolation = Interpolation;
+            while (ParseNextToken() != ParseTokenResult.Finish)
+            {
+            }
+        }
+
+        public string ParseNextWord()
+        {
+            var count = _state.Items.Count;
             while (true)
             {
-                GetNextToken();
-                _state.TokenText = _state.Token.Value;
-                var tokenType = _state.Token.TokenType;
-                if (tokenType == TokenType.Word && _state.StaticState.LineStarters.ContainsKey(_state.Token.Value))
+                var result = ParseNextToken();
+                if (result == ParseTokenResult.Finish)
                 {
-                    PrintNewLine();
+                    return count == _state.Items.Count ? null : _state.Items.Last();
                 }
 
-                if (tokenType == TokenType.EndBlock && interpolation && _state.IndentLevel == 1)
+                if (result == ParseTokenResult.NewWord)
                 {
-                    return;
+                    return _state.Items.Last();
                 }
+            }
+        }
 
-                if (tokenType == TokenType.EndOfFile)
-                {
+        private ParseTokenResult ParseNextToken()
+        {
+            var itemCount = _state.Items.Count;
+            GetNextToken();
+            _state.TokenText = _state.Token.Value;
+            _state.CurrentType = _state.Token.TokenType;
+
+            if (_state.CurrentType == TokenType.Word && _state.StaticState.LineStarters.ContainsKey(_state.Token.Value))
+            {
+                PrintNewLine();
+            }
+
+            if (_state.CurrentType == TokenType.EndBlock && Interpolation && _state.IndentLevel == 1)
+            {
+                return ParseTokenResult.Finish;
+            }
+
+            if (_state.CurrentType == TokenType.EndOfFile)
+            {
+                return ParseTokenResult.Finish;
+            }
+
+            switch (_state.CurrentType)
+            {
+                case TokenType.StartExpression:
+                    _state.VarLine = false;
+                    SetMode(TsMode.Expression);
+                    if (_state.LastText == ";" || _state.LastType == TokenType.StartBlock)
+                    {
+                        PrintNewLine();
+                    }
+                    else if (_state.LastType == TokenType.EndExpression ||
+                             _state.LastType == TokenType.StartExpression)
+                    {
+                        // do nothing on (( and )( and ][ and ]( ..
+                    }
+                    else if (_state.LastType != TokenType.Word && _state.LastType != TokenType.Operator &&
+                             _state.LastType != TokenType.Generics)
+                    {
+                        PrintSpace();
+                    }
+                    else if (_state.StaticState.LineStarters.ContainsKey(_state.LastWord))
+                    {
+                        PrintSpace();
+                    }
+
+                    PrintToken();
                     break;
-                }
 
-                switch (tokenType)
-                {
-                    case TokenType.StartExpression:
-                        varLine = false;
-                        SetMode(TsMode.Expression);
-                        if (_state.LastText == ";" || _state.LastType == TokenType.StartBlock)
-                        {
-                            PrintNewLine();
-                        }
-                        else if (_state.LastType == TokenType.EndExpression ||
-                                 _state.LastType == TokenType.StartExpression)
-                        {
-                            // do nothing on (( and )( and ][ and ]( ..
-                        }
-                        else if (_state.LastType != TokenType.Word && _state.LastType != TokenType.Operator &&
-                                 _state.LastType != TokenType.Generics)
-                        {
-                            PrintSpace();
-                        }
-                        else if (_state.StaticState.LineStarters.ContainsKey(lastWord))
-                        {
-                            PrintSpace();
-                        }
+                case TokenType.EndExpression:
+                    PrintToken();
+                    RestoreMode();
+                    break;
 
-                        PrintToken();
-                        break;
+                case TokenType.StartImport:
+                case TokenType.EndImport:
+                    PrintSpace();
+                    Print(_state.Token.Value);
+                    PrintSpace();
+                    break;
+                case TokenType.StartBlock:
 
-                    case TokenType.EndExpression:
-                        PrintToken();
-                        RestoreMode();
-                        break;
+                    SetMode(_state.LastWord == "do" ? TsMode.DoBlock : TsMode.Block);
 
-                    case TokenType.StartImport:
-                    case TokenType.EndImport:
-                        PrintSpace();
-                        _state.Output.Append(_state.Token.Value);
-                        PrintSpace();
-                        break;
-                    case TokenType.StartBlock:
-
-                        if (lastWord == "do")
-                        {
-                            SetMode(TsMode.DoBlock);
-                        }
-                        else
-                        {
-                            SetMode(TsMode.Block);
-                        }
-
-                        if (_state.LastType != TokenType.Operator && _state.LastType != TokenType.StartExpression)
-                        {
-                            if (_state.LastType == TokenType.StartBlock)
-                            {
-                                PrintNewLine();
-                            }
-                            else
-                            {
-                                if (_state.StaticState.Options.OpenBlockOnNewLine)
-                                {
-                                    PrintNewLine();
-                                }
-                                else
-                                {
-                                    PrintSpace();
-                                }
-                            }
-                        }
-
-                        PrintToken();
-                        Indent();
-                        break;
-
-                    case TokenType.EndBlock:
+                    if (_state.LastType != TokenType.Operator && _state.LastType != TokenType.StartExpression)
+                    {
                         if (_state.LastType == TokenType.StartBlock)
                         {
-                            // nothing
-                            TrimOutput();
-                            Unindent();
+                            PrintNewLine();
                         }
                         else
                         {
+                            if (_state.StaticState.Options.OpenBlockOnNewLine)
+                            {
+                                PrintNewLine();
+                            }
+                            else
+                            {
+                                PrintSpace();
+                            }
+                        }
+                    }
+
+                    PrintToken();
+                    Indent();
+                    break;
+
+                case TokenType.EndBlock:
+                    if (_state.LastType == TokenType.StartBlock)
+                    {
+                        // nothing
+                        TrimOutput();
+                        Unindent();
+                    }
+                    else
+                    {
+                        Unindent();
+                        PrintNewLine();
+                    }
+
+                    PrintToken();
+                    RestoreMode();
+                    break;
+
+                case TokenType.Word:
+
+                    if (_state.DoBlockJustClosed)
+                    {
+                        // do {} ## while ()
+                        PrintSpace();
+                        PrintToken();
+                        PrintSpace();
+                        _state.DoBlockJustClosed = false;
+                        break;
+                    }
+
+                    if ((_state.TokenText == "extends" || _state.TokenText == ":") && _state.LastText == ">")
+                    {
+                        PrintSpace();
+                    }
+
+                    if (_state.TokenText == "case" || _state.TokenText == "default")
+                    {
+                        if (_state.LastText == ":")
+                        {
+                            // switch cases following one another
+                            RemoveIndent();
+                        }
+                        else
+                        {
+                            // case statement starts in the same line where switch
                             Unindent();
                             PrintNewLine();
+                            Indent();
                         }
 
                         PrintToken();
-                        RestoreMode();
+                        _state.InCase = true;
                         break;
+                    }
 
-                    case TokenType.Word:
+                    var prefix = "NONE";
 
-                        if (_state.DoBlockJustClosed)
-                        {
-                            // do {} ## while ()
-                            PrintSpace();
-                            PrintToken();
-                            PrintSpace();
-                            _state.DoBlockJustClosed = false;
-                            break;
-                        }
-
-                        if ((_state.TokenText == "extends" || _state.TokenText == ":") && _state.LastText == ">")
-                        {
-                            PrintSpace();
-                        }
-
-                        if (_state.TokenText == "case" || _state.TokenText == "default")
-                        {
-                            if (_state.LastText == ":")
-                            {
-                                // switch cases following one another
-                                RemoveIndent();
-                            }
-                            else
-                            {
-                                // case statement starts in the same line where switch
-                                Unindent();
-                                PrintNewLine();
-                                Indent();
-                            }
-
-                            PrintToken();
-                            inCase = true;
-                            break;
-                        }
-
-                        var prefix = "NONE";
-
-                        if (_state.LastType == TokenType.EndBlock)
-                        {
-                            if (!new[] {"else", "catch", "finally"}.Contains(_state.TokenText.ToLower()))
-                            {
-                                prefix = "NEWLINE";
-                            }
-                            else
-                            {
-                                prefix = "SPACE";
-                                PrintSpace();
-                            }
-                        }
-                        else if (_state.LastType == TokenType.SemiColon &&
-                                 (_state.CurrentMode == TsMode.Block || _state.CurrentMode == TsMode.DoBlock))
+                    if (_state.LastType == TokenType.EndBlock)
+                    {
+                        if (!new[] {"else", "catch", "finally"}.Contains(_state.TokenText.ToLower()))
                         {
                             prefix = "NEWLINE";
                         }
-                        else if (_state.LastType == TokenType.SemiColon && _state.CurrentMode == TsMode.Expression)
+                        else
                         {
                             prefix = "SPACE";
-                        }
-                        else if (_state.LastType == TokenType.String)
-                        {
-                            prefix = "NEWLINE";
-                        }
-                        else if (_state.LastType == TokenType.Word)
-                        {
-                            prefix = "SPACE";
-                        }
-                        else if (_state.LastType == TokenType.StartBlock)
-                        {
-                            prefix = "NEWLINE";
-                        }
-                        else if (_state.LastType == TokenType.EndExpression)
-                        {
-                            PrintSpace();
-                            prefix = "NEWLINE";
-                        }
-
-                        if (_state.LastType != TokenType.EndBlock &&
-                            new[] {"else", "catch", "finally"}.Contains(_state.TokenText.ToLower()))
-                        {
-                            PrintNewLine();
-                        }
-                        else if (_state.StaticState.LineStarters.ContainsKey(_state.TokenText) || prefix == "NEWLINE")
-                        {
-                            if (_state.LastText == "else")
-                            {
-                                // no need to force newline on else break
-                                PrintSpace();
-                            }
-                            else if ((_state.LastType == TokenType.StartExpression || _state.LastText == "=" ||
-                                      _state.LastText == ",") &&
-                                     _state.TokenText == "function")
-                            {
-                                // no need to force newline on "function": (function
-                                // DONOTHING
-                            }
-                            else if (_state.LastType == TokenType.Word &&
-                                     (_state.LastText == "return" || _state.LastText == "throw"))
-                            {
-                                // no newline between "return nnn"
-                                PrintSpace();
-                            }
-                            else if (_state.LastType != TokenType.EndExpression)
-                            {
-                                if ((_state.LastType != TokenType.StartExpression || _state.TokenText != "var") &&
-                                    _state.LastText != ":")
-                                {
-                                    if (_state.TokenText == "if" && _state.LastType == TokenType.Word &&
-                                        lastWord == "else")
-                                    {
-                                        PrintSpace();
-                                    }
-                                    else
-                                    {
-                                        PrintNewLine();
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                if (_state.StaticState.LineStarters.ContainsKey(_state.TokenText) &&
-                                    _state.LastText != ")")
-                                {
-                                    PrintNewLine();
-                                }
-                            }
-                        }
-                        else if (prefix == "SPACE")
-                        {
                             PrintSpace();
                         }
+                    }
+                    else if (_state.LastType == TokenType.SemiColon &&
+                             (_state.CurrentMode == TsMode.Block || _state.CurrentMode == TsMode.DoBlock))
+                    {
+                        prefix = "NEWLINE";
+                    }
+                    else if (_state.LastType == TokenType.SemiColon && _state.CurrentMode == TsMode.Expression)
+                    {
+                        prefix = "SPACE";
+                    }
+                    else if (_state.LastType == TokenType.String)
+                    {
+                        prefix = "NEWLINE";
+                    }
+                    else if (_state.LastType == TokenType.Word)
+                    {
+                        prefix = "SPACE";
+                    }
+                    else if (_state.LastType == TokenType.StartBlock)
+                    {
+                        prefix = "NEWLINE";
+                    }
+                    else if (_state.LastType == TokenType.EndExpression)
+                    {
+                        PrintSpace();
+                        prefix = "NEWLINE";
+                    }
 
-                        PrintToken();
-                        lastWord = _state.TokenText;
-
-                        if (_state.TokenText == "var")
+                    if (_state.LastType != TokenType.EndBlock &&
+                        new[] {"else", "catch", "finally"}.Contains(_state.TokenText.ToLower()))
+                    {
+                        PrintNewLine();
+                    }
+                    else if (_state.StaticState.LineStarters.ContainsKey(_state.TokenText) || prefix == "NEWLINE")
+                    {
+                        if (_state.LastText == "else")
                         {
-                            varLine = true;
-                            varLineTainted = false;
-                        }
-
-                        if (_state.TokenText == "if" || _state.TokenText == "else")
-                        {
-                            _state.IfLineFlag = true;
-                        }
-
-                        break;
-
-                    case TokenType.SemiColon:
-
-                        PrintToken();
-                        varLine = false;
-                        break;
-
-                    case TokenType.String:
-
-                        if (_state.LastType == TokenType.StartBlock || _state.LastType == TokenType.EndBlock ||
-                            _state.LastType == TokenType.SemiColon)
-                        {
-                            PrintNewLine();
-                        }
-                        else if (_state.LastType == TokenType.Word && _state.LastText != "$")
-                        {
+                            // no need to force newline on else break
                             PrintSpace();
                         }
-
-                        PrintToken();
-                        break;
-                    case TokenType.Generics:
-                        if (_state.Token.Value == "<")
+                        else if ((_state.LastType == TokenType.StartExpression || _state.LastText == "=" ||
+                                  _state.LastText == ",") &&
+                                 _state.TokenText == "function")
                         {
-                            if (genericsDepth == 0)
+                            // no need to force newline on "function": (function
+                            // DONOTHING
+                        }
+                        else if (_state.LastType == TokenType.Word &&
+                                 (_state.LastText == "return" || _state.LastText == "throw"))
+                        {
+                            // no newline between "return nnn"
+                            PrintSpace();
+                        }
+                        else if (_state.LastType != TokenType.EndExpression)
+                        {
+                            if ((_state.LastType != TokenType.StartExpression || _state.TokenText != "var") &&
+                                _state.LastText != ":")
                             {
-                                if (_state.LastText == "}")
-                                {
-                                    PrintNewLine();
-                                }
-
-                                if (_state.LastType == TokenType.Word &&
-                                    _state.LastText == "return")
+                                if (_state.TokenText == "if" && _state.LastType == TokenType.Word &&
+                                    _state.LastWord == "else")
                                 {
                                     PrintSpace();
-                                }
-                            }
-
-                            _state.Output.Append(_state.Token.Value);
-                            genericsDepth++;
-                        }
-                        else
-                        {
-                            _state.Output.Append(_state.Token.Value);
-                            genericsDepth--;
-                        }
-
-                        break;
-                    case TokenType.Operator:
-
-                        var startDelim = true;
-                        var endDelim = true;
-                        if (varLine && _state.TokenText != ",")
-                        {
-                            varLineTainted = true;
-                            if (_state.TokenText == ":")
-                            {
-                                varLine = false;
-                            }
-                        }
-
-                        if (varLine && _state.TokenText == "," && _state.CurrentMode == TsMode.Expression)
-                        {
-                            varLineTainted = false;
-                        }
-
-                        if (_state.TokenText == ":" && inCase)
-                        {
-                            PrintToken(); // colon really asks for separate treatment
-                            PrintNewLine();
-                            inCase = false;
-                            break;
-                        }
-
-                        if (_state.TokenText == "::")
-                        {
-                            // no spaces around exotic namespacing syntax operator
-                            PrintToken();
-                            break;
-                        }
-
-                        if (_state.TokenText == ",")
-                        {
-                            if (varLine)
-                            {
-                                if (varLineTainted)
-                                {
-                                    PrintToken();
-                                    PrintNewLine();
-                                    varLineTainted = false;
                                 }
                                 else
                                 {
-                                    PrintToken();
-                                    PrintSpace();
+                                    PrintNewLine();
                                 }
                             }
-                            else if (_state.LastType == TokenType.EndBlock)
+                        }
+                        else
+                        {
+                            if (_state.StaticState.LineStarters.ContainsKey(_state.TokenText) &&
+                                _state.LastText != ")")
+                            {
+                                PrintNewLine();
+                            }
+                        }
+                    }
+                    else if (prefix == "SPACE")
+                    {
+                        PrintSpace();
+                    }
+
+                    PrintToken();
+                    _state.LastWord = _state.TokenText;
+                    if (_state.TokenText == "var")
+                    {
+                        _state.VarLine = true;
+                        _state.VarLineTainted = false;
+                    }
+
+                    if (_state.TokenText == "if" || _state.TokenText == "else")
+                    {
+                        _state.IfLineFlag = true;
+                    }
+
+                    break;
+
+                case TokenType.SemiColon:
+
+                    PrintToken();
+                    _state.VarLine = false;
+                    break;
+
+                case TokenType.String:
+
+                    if (_state.LastType == TokenType.StartBlock || _state.LastType == TokenType.EndBlock ||
+                        _state.LastType == TokenType.SemiColon)
+                    {
+                        PrintNewLine();
+                    }
+                    else if (_state.LastType == TokenType.Word && _state.LastText != "$")
+                    {
+                        PrintSpace();
+                    }
+
+                    PrintToken();
+                    break;
+                case TokenType.Generics:
+                    if (_state.Token.Value == "<")
+                    {
+                        if (_state.GenericsDepthInternal == 0)
+                        {
+                            if (_state.LastText == "}")
+                            {
+                                PrintNewLine();
+                            }
+
+                            if (_state.LastType == TokenType.Word &&
+                                _state.LastText == "return")
+                            {
+                                PrintSpace();
+                            }
+                        }
+
+                        Print(_state.Token.Value);
+                        _state.GenericsDepthInternal++;
+                    }
+                    else
+                    {
+                        Print(_state.Token.Value);
+                        _state.GenericsDepthInternal--;
+                    }
+
+                    break;
+                case TokenType.Operator:
+
+                    var startDelim = true;
+                    var endDelim = true;
+                    if (_state.VarLine && _state.TokenText != ",")
+                    {
+                        _state.VarLineTainted = true;
+                        if (_state.TokenText == ":")
+                        {
+                            _state.VarLine = false;
+                        }
+                    }
+
+                    if (_state.VarLine && _state.TokenText == "," && _state.CurrentMode == TsMode.Expression)
+                    {
+                        _state.VarLineTainted = false;
+                    }
+
+                    if (_state.TokenText == ":" && _state.InCase)
+                    {
+                        PrintToken(); // colon really asks for separate treatment
+                        PrintNewLine();
+                        _state.InCase = false;
+                        break;
+                    }
+
+                    if (_state.TokenText == "::")
+                    {
+                        // no spaces around exotic namespacing syntax operator
+                        PrintToken();
+                        break;
+                    }
+
+                    if (_state.TokenText == ",")
+                    {
+                        if (_state.VarLine)
+                        {
+                            if (_state.VarLineTainted)
                             {
                                 PrintToken();
                                 PrintNewLine();
+                                _state.VarLineTainted = false;
                             }
                             else
                             {
-                                if (_state.CurrentMode == TsMode.Block && !_state.IsImportBlock)
-                                {
-                                    PrintToken();
-                                    if (genericsDepth > 0)
-                                    {
-                                        PrintSpace();
-                                    }
-                                    else
-                                    {
-                                        PrintNewLine();
-                                    }
-                                }
-                                else
-                                {
-                                    // EXPR od DO_BLOCK
-                                    PrintToken();
-                                    PrintSpace();
-                                }
-                            }
-
-                            break;
-                        }
-                        else if (_state.TokenText == "--" || _state.TokenText == "++")
-                        {
-                            // unary operators special case
-                            if (_state.LastText == ";")
-                            {
-                                if (_state.CurrentMode == TsMode.Block)
-                                {
-                                    // { foo; --i }
-                                    PrintNewLine();
-                                    startDelim = true;
-                                    endDelim = false;
-                                }
-                                else
-                                {
-                                    // space for (;; ++i)
-                                    startDelim = true;
-                                    endDelim = false;
-                                }
-                            }
-                            else
-                            {
-                                if (_state.LastText == "{")
-                                {
-                                    PrintNewLine();
-                                }
-
-                                startDelim = false;
-                                endDelim = false;
+                                PrintToken();
+                                PrintSpace();
                             }
                         }
-                        else if ((_state.TokenText == "!" || _state.TokenText == "+" || _state.TokenText == "-") &&
-                                 (_state.LastText == "return" || _state.LastText == "case"))
+                        else if (_state.LastType == TokenType.EndBlock)
                         {
-                            startDelim = true;
-                            endDelim = false;
-                        }
-                        else if ((_state.TokenText == "!" || _state.TokenText == "+" || _state.TokenText == "-") &&
-                                 _state.LastType == TokenType.StartExpression)
-                        {
-                            // special case handling: if (!a)
-                            startDelim = false;
-                            endDelim = false;
-                        }
-                        else if (_state.LastType == TokenType.Operator)
-                        {
-                            startDelim = false;
-                            endDelim = false;
-                        }
-                        else if (_state.LastType == TokenType.EndExpression)
-                        {
-                            startDelim = true;
-                            endDelim = true;
-                        }
-                        else if (_state.TokenText == ".")
-                        {
-                            // decimal digits or object.property
-                            startDelim = false;
-                            endDelim = false;
-                        }
-                        else if (_state.TokenText == ":")
-                        {
-                            if (IsTernaryOperation())
-                            {
-                                startDelim = true;
-                            }
-                            else
-                            {
-                                startDelim = false;
-                            }
-                        }
-
-                        var isConditionalAccess = PeekNextChar() == '.';
-                        var isMethodReturnType = IsMethodReturnType();
-                        if (startDelim && !isConditionalAccess)
-                        {
-                            PrintSpace();
-                        }
-
-                        PrintToken();
-                        if (endDelim && !isConditionalAccess)
-                        {
-                            PrintSpace();
-                        }
-
-                        break;
-
-                    case TokenType.BlockComment:
-                        PrintNewLineOrSpace(_state.Token);
-                        PrintToken();
-                        PrintNewLineOrSpace(_state.Token);
-                        break;
-
-                    case TokenType.Comment:
-
-                        // print_newline();
-                        if (_state.LastType == TokenType.StartBlock)
-                        {
+                            PrintToken();
                             PrintNewLine();
                         }
                         else
                         {
-                            PrintNewLineOrSpace(_state.Token);
+                            if (_state.CurrentMode == TsMode.Block && !_state.IsImportBlock)
+                            {
+                                PrintToken();
+                                if (_state.GenericsDepthInternal > 0)
+                                {
+                                    PrintSpace();
+                                }
+                                else
+                                {
+                                    PrintNewLine();
+                                }
+                            }
+                            else
+                            {
+                                // EXPR od DO_BLOCK
+                                PrintToken();
+                                PrintSpace();
+                            }
                         }
 
-                        PrintToken();
+                        break;
+                    }
+                    else if (_state.TokenText == "--" || _state.TokenText == "++")
+                    {
+                        // unary operators special case
+                        if (_state.LastText == ";")
+                        {
+                            if (_state.CurrentMode == TsMode.Block)
+                            {
+                                // { foo; --i }
+                                PrintNewLine();
+                                startDelim = true;
+                                endDelim = false;
+                            }
+                            else
+                            {
+                                // space for (;; ++i)
+                                startDelim = true;
+                                endDelim = false;
+                            }
+                        }
+                        else
+                        {
+                            if (_state.LastText == "{")
+                            {
+                                PrintNewLine();
+                            }
+
+                            startDelim = false;
+                            endDelim = false;
+                        }
+                    }
+                    else if ((_state.TokenText == "!" || _state.TokenText == "+" || _state.TokenText == "-") &&
+                             (_state.LastText == "return" || _state.LastText == "case"))
+                    {
+                        startDelim = true;
+                        endDelim = false;
+                    }
+                    else if ((_state.TokenText == "!" || _state.TokenText == "+" || _state.TokenText == "-") &&
+                             _state.LastType == TokenType.StartExpression)
+                    {
+                        // special case handling: if (!a)
+                        startDelim = false;
+                        endDelim = false;
+                    }
+                    else if (_state.LastType == TokenType.Operator)
+                    {
+                        startDelim = false;
+                        endDelim = false;
+                    }
+                    else if (_state.LastType == TokenType.EndExpression)
+                    {
+                        startDelim = true;
+                        endDelim = true;
+                    }
+                    else if (_state.TokenText == ".")
+                    {
+                        // decimal digits or object.property
+                        startDelim = false;
+                        endDelim = false;
+                    }
+                    else if (_state.TokenText == ":")
+                    {
+                        startDelim = IsTernaryOperation();
+                    }
+
+                    var isConditionalAccess = PeekNextChar() == '.';
+                    var isMethodReturnType = IsMethodReturnType();
+                    if (startDelim && !isConditionalAccess && !isMethodReturnType)
+                    {
+                        PrintSpace();
+                    }
+
+                    PrintToken();
+                    if (endDelim && !isConditionalAccess)
+                    {
+                        PrintSpace();
+                    }
+
+                    break;
+
+                case TokenType.BlockComment:
+                    PrintNewLineOrSpace(_state.Token);
+                    PrintToken();
+                    PrintNewLineOrSpace(_state.Token);
+                    break;
+
+                case TokenType.Comment:
+
+                    // print_newline();
+                    if (_state.LastType == TokenType.StartBlock)
+                    {
                         PrintNewLine();
-                        break;
+                    }
+                    else
+                    {
+                        PrintNewLineOrSpace(_state.Token);
+                    }
 
-                    case TokenType.Unknown:
-                        PrintToken();
-                        break;
-                }
+                    PrintToken();
+                    PrintNewLine();
+                    break;
 
-                _state.LastType = tokenType;
-                _state.LastText = _state.TokenText;
+                case TokenType.Unknown:
+                    PrintToken();
+                    break;
             }
+
+            if (_state.CurrentType != _state.LastType || 
+                _state.CurrentType == TokenType.Generics && _state.InGenerics == false)
+            {
+                StoreWord();
+            }
+            _state.LastType = _state.CurrentType;
+            _state.LastText = _state.TokenText;
+            return _state.Items.Count > itemCount
+                ? ParseTokenResult.NewWord
+                : ParseTokenResult.Continue;
         }
 
         private bool IsMethodReturnType()
         {
-            // GetNextToken();
+            // TODO: JC: Fix performance of this nested parsing
+            var manager = new StateManager(_state.Clone());
+            var nextChar = PeekNextChar();
+            if ((nextChar >= 97 && nextChar <= 122) ||
+                (nextChar >= 65 && nextChar <= 90) ||
+                nextChar == 95)
+            {
+                var next1 = manager.ParseNextWord();
+                return Regex.IsMatch(next1, @"[_A-Za-z][A-Za-z0-9\s\<\>]*") && manager.ParseNextWord() == "{";
+            }
+
             return false;
         }
 
@@ -1175,13 +1196,15 @@ namespace TsBeautify
 
             if (SecondToLastChar != '\n' || !ignoreRepeated.Value)
             {
-                _state.Output.Append(Environment.NewLine);
+                Print(Environment.NewLine);
             }
 
             for (var i = 0; i < _state.IndentLevel; i++)
             {
-                _state.Output.Append(_state.StaticState.IndentString);
+                Print(_state.StaticState.IndentString);
             }
+
+            StoreWord();
         }
 
         private void PrintSpace()
@@ -1189,14 +1212,41 @@ namespace TsBeautify
             if (SecondToLastChar != ' ' && SecondToLastChar != '\n' &&
                 SecondToLastChar != _state.StaticState.IndentString[0])
             {
-                _state.Output.Append(' ');
+                Print(' ');
+                StoreWord();
+            }
+        }
+
+        private void StoreWord()
+        {
+            if (_state.InGenerics || PeekNextChar() == '<')
+            {
+                return;
+            }
+            var item = _state.WordOutput.ToString().Trim();
+            if (!string.IsNullOrWhiteSpace(item))
+            {
+                _state.Items.Add(item);
+                _state.WordOutput.Clear();
             }
         }
 
 
         private void PrintToken()
         {
-            _state.Output.Append(_state.TokenText);
+            Print(_state.TokenText);
+        }
+
+        private void Print(char value)
+        {
+            _state.Output.Append(value);
+            _state.WordOutput.Append(value);
+        }
+        
+        private void Print(string value)
+        {
+            _state.Output.Append(value);
+            _state.WordOutput.Append(value);
         }
 
         private void Indent()
@@ -1281,5 +1331,12 @@ namespace TsBeautify
 
             return false;
         }
+    }
+
+    internal enum ParseTokenResult
+    {
+        Continue,
+        Finish,
+        NewWord
     }
 }
