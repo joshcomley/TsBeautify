@@ -5,7 +5,7 @@ using TsBeautify.Data;
 namespace TsBeautify.Tests
 {
     [TestClass]
-    public class BeautifierTests
+    public class BeautifierTests : TestBase
     {
         [TestMethod]
         public void ReturnShouldNeverBeFollowedByANewLine()
@@ -63,14 +63,7 @@ namespace TsBeautify.Tests
             var result = Beautify(@"var callbackMatch = Regex.Match(line, $@""typedef {{something}} [A-Za-z0-9_]+ {somethingElse} [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");");
             Assert.AreEqual(@"var callbackMatch = Regex.Match(line, $@""typedef {{something}} [A-Za-z0-9_]+ {somethingElse} [(]\*(?<Name>[A-Za-z0-9_]+)[)][(](?<Arguments>.*)[)];"");", result);
         }
-
-        private static string Beautify(string code)
-        {
-            var beautifier = new TsBeautifier();
-            var result = beautifier.Beautify(code);
-            return result;
-        }
-
+        
         [TestMethod]
         public void TestKeepBracesOnNewLines()
         {
@@ -185,10 +178,7 @@ let y = 7;";
         [TestMethod]
         public void TestFunctionShortcut()
         {
-            var typescript = @"f(p => { });";
-            //typescript = "let x = `a`;";
-            var beautifier = new TsBeautifier();
-            var result = beautifier.Beautify(typescript);
+            var result = Beautify(@"f(p => { });");
             Assert.AreEqual(@"f(p => {});", result);
         }
 
