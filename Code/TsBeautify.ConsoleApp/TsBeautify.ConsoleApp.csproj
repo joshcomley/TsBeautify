@@ -4,7 +4,7 @@
     <TargetFramework>netcoreapp2.1</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="ShellProgressBar" Version="4.3.0" />
+    <PackageReference Include="ShellProgressBar" Version="5.1.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\TsBeautify.Tests\TsBeautify.Tests.csproj" />
